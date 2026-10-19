@@ -45,6 +45,8 @@ ProtectHostname=yes
 SystemCallArchitectures=native
 SystemCallFilter=@system-service
 SystemCallFilter=~@privileged
+# V8 (Node) nutzt Memory Protection Keys zum Schutz seines JIT-Codes; nicht in @system-service enthalten.
+SystemCallFilter=pkey_alloc pkey_free pkey_mprotect
 
 [Install]
 WantedBy=multi-user.target
