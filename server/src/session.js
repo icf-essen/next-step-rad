@@ -1,0 +1,35 @@
+import { config } from "./config.js";
+import { query } from "./db.js";
+import { SESSION_COOKIE } from "./errors.js";
+import { hashToken, newSessionToken } from "./security.js";
+
+export async function createSession(reply, userId) {
+  const token = newSessionToken();
+  const maxAgeSeconds = config.sessionDays * 24 * 60 * 60;
+  await query(
+    `INSERT INTO sessions (user_id, token_hash, expires_at)
+     VALUES ($1, $2, now() + make_interval(secs => $3))`,
+    [userId, hashToken(token), maxAgeSeconds]
+  );
+  reply.setCookie(SESSION_COOKIE, token, {
+    path: config.cookiePath,
+    httpOnly: true, // für JavaScript im Browser unsichtbar (Schutz bei XSS)
+    secure: config.cookieSecure,
+    sameSite: "strict", // wird bei Anfragen von fremden Seiten nicht mitgeschickt (Schutz vor CSRF)
+    maxAge: maxAgeSeconds,
+  });
+}
+
+export function clearSessionCookie(reply) {
+  reply.clearCookie(SESSION_COOKIE, { path: config.cookiePath });
+}
+
+/** Abgelaufene Sitzungen regelmäßig entfernen. */
+export function startSessionCleanup(log) {
+  const run = () =>
+    query("DELETE FROM sessions WHERE expires_at < now()")
+      .then((r) => r.rowCount && log.info({ removed: r.rowCount }, "Abgelaufene Sitzungen entfernt"))
+      .catch((err) => log.error(err, "Sitzungs-Bereinigung fehlgeschlagen"));
+  run();
+  return setInterval(run, 60 * 60 * 1000).unref();
+}

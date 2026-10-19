@@ -1,0 +1,21 @@
+{
+  "name": "next-step-rad-api",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Backend-API für Next Step Rad (PostgreSQL)",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "smoke": "node test/smoke.mjs"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/rate-limit": "^10.3.0",
+    "@node-rs/argon2": "^2.0.2",
+    "fastify": "^5.6.1",
+    "pg": "^8.16.3"
+  }
+}

@@ -1,0 +1,50 @@
+[Unit]
+Description=Next Step Rad API
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=nextstep-api
+Group=nextstep-api
+WorkingDirectory=/opt/next-step-rad/repo/server
+ExecStart=/usr/bin/node src/server.js
+EnvironmentFile=/etc/next-step-rad/api.env
+Restart=on-failure
+RestartSec=5
+
+# --- Härtung --------------------------------------------------------------
+# Der Dienst darf ausschließlich mit localhost sprechen (PostgreSQL, Caddy).
+# Selbst bei einer Kompromittierung der API sind von diesem Prozess aus keine
+# Verbindungen ins Netz oder ins Internet möglich.
+IPAddressDeny=any
+IPAddressAllow=localhost
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+# Dateisystem nur lesbar, kein Zugriff auf /home, eigenes /tmp
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+UMask=0077
+
+# Keine Rechteausweitung, keine Capabilities
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged
+
+[Install]
+WantedBy=multi-user.target
