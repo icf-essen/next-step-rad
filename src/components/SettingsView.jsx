@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { RotateCcw, LogOut, KeyRound, CheckCircle2 } from "lucide-react";
 import { AREA_ORDER, AREA_META } from "../constants.js";
+import { LegalLinks } from "./LegalLinks.jsx";
 
 const MIN_PASSWORD = 10;
 
@@ -17,6 +18,7 @@ export function SettingsView({
   onUnlinkSso,
   ssoAvailable,
   onLogout,
+  legal,
 }) {
   const [name, setName] = useState(me.displayName || "");
 
@@ -253,6 +255,7 @@ export function SettingsView({
           </form>
         )}
       </div>
+      <LegalLinks legal={legal} />
     </div>
   );
 }

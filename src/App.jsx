@@ -8,6 +8,7 @@ import {
   Users,
   ChevronRight,
   ChevronDown,
+  ShieldCheck,
 } from "lucide-react";
 import * as api from "./apiClient.js";
 import { AREA_ORDER, AREA_META, VERSE } from "./constants.js";
@@ -20,6 +21,9 @@ import { HistoryView } from "./components/HistoryView.jsx";
 import { SettingsView } from "./components/SettingsView.jsx";
 import { GroupsView } from "./components/GroupsView.jsx";
 import { AuthView } from "./components/AuthView.jsx";
+import { AdminView } from "./components/AdminView.jsx";
+import { ResetPasswordView } from "./components/ResetPasswordView.jsx";
+import { LegalLinks } from "./components/LegalLinks.jsx";
 
 const GROUP_POLL_MS = 8000;
 const EMPTY_GROUP = { group: null, chat: [], loading: false, error: "" };
@@ -28,6 +32,16 @@ function defaultColors() {
   const colors = {};
   AREA_ORDER.forEach((k) => (colors[k] = AREA_META[k].defaultColor));
   return colors;
+}
+
+/** Token aus einem Link zum Zurücksetzen des Passworts (#reset=…) auslesen. */
+function readResetToken() {
+  const m = window.location.hash.match(/^#reset=([A-Za-z0-9_-]{20,100})$/);
+  return m ? m[1] : null;
+}
+
+function clearHash() {
+  window.history.replaceState(null, "", window.location.pathname + window.location.search);
 }
 
 /** Rückmeldung aus dem SSO-Ablauf (?sso=… / ?sso_error=…) einmalig auslesen und aus der Adresse entfernen. */
@@ -45,7 +59,8 @@ function takeSsoResult() {
 
 export default function NextStepRad() {
   const [authChecked, setAuthChecked] = useState(false);
-  const [authOptions, setAuthOptions] = useState({ sso: false, ssoLabel: null });
+  const [authOptions, setAuthOptions] = useState({ sso: false, ssoLabel: null, legal: null });
+  const [resetToken, setResetToken] = useState(readResetToken);
   const [ssoError, setSsoError] = useState("");
   const [me, setMe] = useState(null);
   const [entriesLoaded, setEntriesLoaded] = useState(false);
@@ -77,6 +92,13 @@ export default function NextStepRad() {
   useEffect(() => {
     groupStateRef.current = groupState;
   }, [groupState]);
+
+  // Reset-Link in einem bereits offenen Tab: Nur das Fragment ändert sich, kein Neuladen.
+  useEffect(() => {
+    const onHash = () => setResetToken(readResetToken());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
 
   /* --- Sitzung prüfen und Daten laden --- */
   const applyMe = useCallback((data) => {
@@ -412,6 +434,28 @@ export default function NextStepRad() {
     }, "Nachricht konnte nicht gesendet werden.");
 
   /* --- Darstellung --- */
+  if (resetToken) {
+    return (
+      <>
+        <ResetPasswordView
+          token={resetToken}
+          legal={authOptions.legal}
+          onDone={() => {
+            clearHash();
+            setResetToken(null);
+            signOutLocally();
+            setToast("Dein neues Passwort ist gespeichert. Melde dich jetzt damit an.");
+          }}
+          onCancel={() => {
+            clearHash();
+            setResetToken(null);
+          }}
+        />
+        {toast && <div className="nsr-toast">{toast}</div>}
+      </>
+    );
+  }
+
   // Bis die Einträge da sind, nicht das leere Rad zeigen (sähe aus wie Datenverlust).
   if (!authChecked || (me && !entriesLoaded && !loadError)) {
     return (
@@ -459,6 +503,7 @@ export default function NextStepRad() {
               { key: "history", label: "Historie", icon: HistoryIcon },
               { key: "groups", label: "Gruppen", icon: Users },
               { key: "settings", label: "Einstellungen", icon: SettingsIcon },
+              ...(me.isAdmin ? [{ key: "admin", label: "Verwaltung", icon: ShieldCheck }] : []),
             ].map((item) => {
               const Icon = item.icon;
               return (
@@ -477,6 +522,7 @@ export default function NextStepRad() {
                 </button>
               );
             })}
+            <LegalLinks legal={authOptions.legal} />
           </nav>
         </div>
       )}
@@ -535,8 +581,11 @@ export default function NextStepRad() {
             onLinkSso={() => api.startSso("link")}
             onUnlinkSso={handleUnlinkSso}
             onLogout={handleLogout}
+            legal={authOptions.legal}
           />
         )}
+
+        {view === "admin" && me.isAdmin && <AdminView />}
 
         {view === "groups" && (
           <GroupsView

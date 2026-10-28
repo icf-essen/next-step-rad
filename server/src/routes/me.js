@@ -9,7 +9,7 @@ import { leaveAllOwnGroupsTx, listGroupsForUser } from "./groups.js";
 const DELETE_CONFIRM_WORD = "LÖSCHEN";
 
 /** Alles, was das Frontend nach dem Login über den Nutzer wissen muss. */
-export async function loadMe(userId) {
+export async function loadMe(userId, { isAdmin = false } = {}) {
   const db = { query };
   const [user, colors, groups, identities] = await Promise.all([
     query("SELECT id, email, display_name, password_hash IS NOT NULL AS has_password FROM users WHERE id = $1", [userId]),
@@ -24,6 +24,7 @@ export async function loadMe(userId) {
     email: u.email,
     displayName: u.display_name,
     hasPassword: u.has_password,
+    isAdmin: !!isAdmin,
     ssoLinked: identities.rows.some((r) => r.provider === "authentik"),
     colors: Object.fromEntries(colors.rows.map((r) => [r.area_key, r.color_hex])),
     groups,
@@ -39,7 +40,9 @@ export default async function meRoutes(app) {
     return rows.map((r) => ({ key: r.key, label: r.label, defaultColor: r.default_color, sortOrder: r.sort_order }));
   });
 
-  app.get("/me", { preHandler: app.authenticate }, async (request) => loadMe(request.user.id));
+  const meFor = (request) => loadMe(request.user.id, { isAdmin: request.user.session_admin });
+
+  app.get("/me", { preHandler: app.authenticate }, async (request) => meFor(request));
 
   app.patch(
     "/me",
@@ -59,7 +62,7 @@ export default async function meRoutes(app) {
         request.user.id,
         request.body.displayName.trim(),
       ]);
-      return loadMe(request.user.id);
+      return meFor(request);
     }
   );
 
@@ -95,7 +98,7 @@ export default async function meRoutes(app) {
           );
         }
       });
-      return loadMe(userId);
+      return meFor(request);
     }
   );
 
@@ -178,6 +181,8 @@ export default async function meRoutes(app) {
     }
     await withTransaction(async (client) => {
       await client.query("DELETE FROM user_identities WHERE user_id = $1 AND provider = 'authentik'", [request.user.id]);
+      // Admin-Rechte stammen aus Authentik und enden mit der Verbindung.
+      await client.query("UPDATE sessions SET is_admin = false WHERE user_id = $1", [request.user.id]);
       // Team-Gruppen hängen an der Authentik-Identität und entfallen mit ihr.
       await client.query(
         `DELETE FROM group_members m USING groups g
@@ -185,6 +190,6 @@ export default async function meRoutes(app) {
         [request.user.id]
       );
     });
-    return loadMe(request.user.id);
+    return loadMe(request.user.id, { isAdmin: false });
   });
 }

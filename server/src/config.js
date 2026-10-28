@@ -64,6 +64,29 @@ config.oidc = process.env.OIDC_ISSUER
       requiredGroup: process.env.OIDC_REQUIRED_GROUP || null,
       // Kürzere Sitzungen, damit Änderungen in Authentik zeitnah greifen.
       sessionDays: int("OIDC_SESSION_DAYS", 7),
+      // Wer in dieser Authentik-Gruppe ist, bekommt bei SSO-Anmeldung Zugriff auf die Verwaltung.
+      adminGroup: process.env.OIDC_ADMIN_GROUP || "next-step-admin",
       buttonLabel: process.env.OIDC_BUTTON_LABEL || "Mit ICF-Konto anmelden",
     }
   : null;
+
+// Gültigkeit der Links zum Zurücksetzen eines Passworts (Stunden).
+config.passwordResetHours = int("PASSWORD_RESET_HOURS", 24);
+
+// Links zu Impressum und Datenschutzerklärung (werden in der App angezeigt).
+function httpsUrl(name) {
+  const value = process.env[name];
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:") throw new Error("kein https");
+    return url.href;
+  } catch {
+    console.error(`Ungültige Adresse in ${name}: ${value} (erwartet: https://…)`);
+    process.exit(1);
+  }
+}
+config.legal = {
+  imprintUrl: httpsUrl("LEGAL_IMPRINT_URL"),
+  privacyUrl: httpsUrl("LEGAL_PRIVACY_URL"),
+};

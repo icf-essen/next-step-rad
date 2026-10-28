@@ -2,6 +2,7 @@ import React, { useId, useState } from "react";
 import { KeyRound, LogIn, UserPlus } from "lucide-react";
 import { VERSE } from "../constants.js";
 import { login, register, startSso } from "../apiClient.js";
+import { LegalLinks } from "./LegalLinks.jsx";
 
 const MIN_PASSWORD = 10;
 
@@ -175,9 +176,11 @@ export function AuthView({ options, ssoError, onAuthenticated }) {
 
           {!isRegister && (
             <p className="nsr-hint nsr-center">
-              Passwort vergessen? Wende dich an das IT-Team, es setzt dein Passwort zurück.
+              Passwort vergessen? Wende dich an das IT-Team, du bekommst dann einen Link, mit dem du ein neues
+              Passwort festlegst.
             </p>
           )}
+          <LegalLinks legal={options?.legal} />
         </div>
       </main>
     </div>

@@ -149,6 +149,7 @@ export default async function oidcRoutes(app) {
   app.get("/auth/options", async () => ({
     sso: !!config.oidc,
     ssoLabel: config.oidc ? config.oidc.buttonLabel : null,
+    legal: config.legal,
   }));
 
   if (!config.oidc) return;
@@ -255,7 +256,9 @@ export default async function oidcRoutes(app) {
           await syncTeamsTx(client, id, groups);
           return id;
         });
-        await createSession(reply, userId, config.oidc.sessionDays);
+        const isAdmin = !!config.oidc.adminGroup && groups.includes(config.oidc.adminGroup);
+        await createSession(reply, userId, config.oidc.sessionDays, { isAdmin });
+        if (isAdmin) request.log.info({ userId }, "Admin-Sitzung über SSO angelegt");
         return reply.redirect(appUrl({ sso: "login" }));
       } catch (err) {
         const code = err instanceof SsoError ? err.ssoCode : "failed";

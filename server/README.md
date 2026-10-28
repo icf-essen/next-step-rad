@@ -41,6 +41,19 @@ Browser ──HTTPS──► Caddy
 | DELETE | `/groups/:id/members/:userId` | Leitung | Mitglied entfernen (nicht bei Team-Gruppen) |
 | GET | `/groups/:id/messages?after=ID` | ✓ | Chat (letzte 200 bzw. neuere als ID) |
 | POST | `/groups/:id/messages` | ✓ | `{text}` |
+| GET | `/admin/users?q=…` | Admin | Konten nach E-Mail/Name suchen (max. 25) |
+| POST | `/admin/users/:id/password-reset` | Admin | Einmal-Link zum Zurücksetzen erzeugen |
+| POST | `/auth/password-reset` | – | Neues Passwort mit Link-Token setzen `{token, newPassword}` |
+
+## Verwaltung und Passwort zurücksetzen
+
+- Admin ist, wer sich **per SSO** anmeldet und in Authentik in `next-step-admin` ist.
+  Das Recht hängt an der Sitzung: Passwort-Anmeldungen sind nie Admin, und mit dem
+  Ende der Sitzung (bzw. dem Trennen des ICF-Kontos) endet es.
+- Zurücksetzen: Admin erzeugt einen Einmal-Link (24 h), gibt ihn persönlich weiter,
+  die Person legt selbst ein neues Passwort fest. Der Admin kennt es nie.
+  In der DB liegt nur der Hash des Tokens; ein neuer Link entwertet ältere;
+  beim Einlösen werden alle Sitzungen der Person beendet.
 
 ## Anmeldung über Authentik und Team-Gruppen
 
@@ -85,11 +98,10 @@ und löscht die Konten am Ende wieder.
 `migrations/` enthält das Schema in Reihenfolge. Ausführen als Eigentümer, nicht als App-Rolle:
 
 ```bash
-sudo -u postgres psql -d nextstep -v ON_ERROR_STOP=1 -f migrations/002_sso_und_mehrere_gruppen.sql
+sudo -u postgres psql -d nextstep -v ON_ERROR_STOP=1 -f migrations/003_admin_und_passwort_reset.sql
 ```
 
 ## Noch nicht enthalten
 
-- Passwort-Reset per E-Mail (benötigt Freigabe DMZ → Mail-Relay). Bis dahin
-  setzt die IT-Administration ein Passwort bei Bedarf manuell zurück.
+- Versand von Reset-Links per E-Mail (benötigt Freigabe DMZ → Mail-Relay).
 - Übernahme von Daten aus Firebase.

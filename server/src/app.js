@@ -10,6 +10,7 @@ import meRoutes from "./routes/me.js";
 import checkinRoutes from "./routes/checkins.js";
 import groupRoutes from "./routes/groups.js";
 import oidcRoutes from "./routes/oidc.js";
+import adminRoutes from "./routes/admin.js";
 
 export async function buildApp(opts = {}) {
   const app = Fastify({
@@ -50,7 +51,7 @@ export async function buildApp(opts = {}) {
     const token = request.cookies[SESSION_COOKIE];
     if (!token) throw new HttpError(401, "Nicht angemeldet.");
     const { rows } = await query(
-      `SELECT s.id AS session_id, u.id, u.email, u.display_name
+      `SELECT s.id AS session_id, s.is_admin AS session_admin, u.id, u.email, u.display_name
          FROM sessions s
          JOIN users u ON u.id = s.user_id
         WHERE s.token_hash = $1 AND s.expires_at > now()`,
@@ -58,6 +59,12 @@ export async function buildApp(opts = {}) {
     );
     if (rows.length === 0) throw new HttpError(401, "Sitzung abgelaufen. Bitte neu anmelden.");
     request.user = rows[0];
+  });
+
+  // Nur für Admin-Sitzungen (SSO-Anmeldung als Mitglied der Admin-Gruppe in Authentik).
+  app.decorate("requireAdmin", async (request) => {
+    await app.authenticate(request);
+    if (!request.user.session_admin) throw new HttpError(403, "Nur für die Verwaltung.");
   });
 
   app.setErrorHandler((err, request, reply) => {
@@ -93,6 +100,7 @@ export async function buildApp(opts = {}) {
       await api.register(checkinRoutes);
       await api.register(groupRoutes);
       await api.register(oidcRoutes);
+      await api.register(adminRoutes);
     },
     { prefix: config.apiPrefix }
   );
