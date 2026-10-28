@@ -197,8 +197,13 @@ export default function NextStepRad() {
           refreshMe();
           return;
         }
+        if (group.optedOut) {
+          // Abgewählte Team-Gruppe: keine Mitglieder, kein Chat.
+          setGroupState({ group, chat: [], loading: false, error: "" });
+          return;
+        }
         const prev = groupStateRef.current;
-        const sameGroup = prev.group?.id === group.id;
+        const sameGroup = prev.group?.id === group.id && !prev.group?.optedOut;
         const lastId = sameGroup && prev.chat.length ? prev.chat[prev.chat.length - 1].id : 0;
         const fresh = await api.getMessages(groupId, lastId);
         setGroupState((p) => {
@@ -426,6 +431,15 @@ export default function NextStepRad() {
       await loadGroupData(selectedGroupId);
     }, "Leitung konnte nicht übergeben werden.");
 
+  const setParticipation = (active) =>
+    runGroupAction(async () => {
+      await api.setParticipation(selectedGroupId, active);
+      setGroupState((prev) => ({ ...prev, chat: [] }));
+      await loadGroupData(selectedGroupId);
+      await refreshMe();
+      setToast(active ? "Du bist wieder dabei." : "Du nimmst an dieser Gruppe nicht mehr teil.");
+    }, "Teilnahme konnte nicht geändert werden.");
+
   const sendChatMessage = (text) =>
     runGroupAction(async () => {
       if (!text.trim()) return;
@@ -602,6 +616,7 @@ export default function NextStepRad() {
             onRenameGroup={renameGroup}
             onRemoveMember={removeMember}
             onTransferAdmin={transferAdmin}
+            onSetParticipation={setParticipation}
             onSendChat={sendChatMessage}
           />
         )}

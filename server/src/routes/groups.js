@@ -21,7 +21,7 @@ function isManaged(row) {
 /** Mitgliedschaft des Nutzers in einer bestimmten Gruppe, oder null. */
 async function getMembership(db, groupId, userId, { lock = false } = {}) {
   const { rows } = await db.query(
-    `SELECT m.group_id, m.role, g.code, g.name, g.external_source
+    `SELECT m.group_id, m.role, m.opted_out, g.code, g.name, g.external_source
        FROM group_members m JOIN groups g ON g.id = m.group_id
       WHERE m.group_id = $1 AND m.user_id = $2 ${lock ? "FOR UPDATE OF m" : ""}`,
     [groupId, userId]
@@ -29,10 +29,17 @@ async function getMembership(db, groupId, userId, { lock = false } = {}) {
   return rows[0] || null;
 }
 
-async function requireMembership(groupId, userId) {
+/**
+ * Mitgliedschaft voraussetzen. Wer eine Team-Gruppe abgewählt hat, gilt für
+ * Inhalte (Mitglieder, Chat) als nicht dabei – außer allowOptedOut ist gesetzt.
+ */
+async function requireMembership(groupId, userId, { allowOptedOut = false } = {}) {
   const m = await getMembership({ query }, groupId, userId);
   // Bewusst 404 statt 403: Außenstehende erfahren nicht, ob es die Gruppe gibt.
   if (!m) throw new HttpError(404, "Gruppe nicht gefunden.");
+  if (m.opted_out && !allowOptedOut) {
+    throw new HttpError(403, "Du nimmst an dieser Gruppe nicht teil.");
+  }
   return m;
 }
 
@@ -52,8 +59,9 @@ async function requireAdmin(groupId, userId) {
 /** Gruppenübersicht für /me und GET /groups. Codes nur für eigene Gruppen. */
 export async function listGroupsForUser(db, userId) {
   const { rows } = await db.query(
-    `SELECT g.id, g.code, g.name, g.external_source, m.role,
-            (SELECT count(*) FROM group_members x WHERE x.group_id = g.id)::int AS member_count
+    `SELECT g.id, g.code, g.name, g.external_source, m.role, m.opted_out,
+            (SELECT count(*) FROM group_members x
+              WHERE x.group_id = g.id AND NOT x.opted_out)::int AS member_count
        FROM group_members m JOIN groups g ON g.id = m.group_id
       WHERE m.user_id = $1
       ORDER BY (g.external_source IS NULL), lower(g.name), g.id`,
@@ -65,6 +73,7 @@ export async function listGroupsForUser(db, userId) {
     code: isManaged(r) ? null : r.code,
     role: r.role,
     managed: isManaged(r),
+    optedOut: r.opted_out,
     memberCount: r.member_count,
   }));
 }
@@ -193,14 +202,18 @@ export default async function groupRoutes(app) {
   // Die View latest_shared_checkins enthält ALLE Nutzer, deshalb wird hier
   // ausdrücklich auf die Mitglieder dieser Gruppe gefiltert.
   app.get("/groups/:groupId", { ...auth, schema: { params: GROUP_ID_PARAMS } }, async (request) => {
-    const m = await requireMembership(request.params.groupId, request.user.id);
+    const m = await requireMembership(request.params.groupId, request.user.id, { allowOptedOut: true });
+    if (m.opted_out) {
+      // Abgewählt: nur das Nötigste, um die Teilnahme wieder einschalten zu können.
+      return { id: m.group_id, code: null, name: m.name, role: m.role, managed: true, optedOut: true, members: [] };
+    }
     const { rows } = await query(
       `SELECT gm.user_id, u.display_name, gm.role, gm.joined_at,
               l.checkin_id, l.week_id, l.next_step_area, l.next_step_text, l.updated_at
          FROM group_members gm
          JOIN users u ON u.id = gm.user_id
          LEFT JOIN latest_shared_checkins l ON l.user_id = gm.user_id
-        WHERE gm.group_id = $1
+        WHERE gm.group_id = $1 AND NOT gm.opted_out
         ORDER BY (gm.role <> 'admin'), gm.joined_at, gm.user_id`,
       [m.group_id]
     );
@@ -219,6 +232,7 @@ export default async function groupRoutes(app) {
       name: m.name,
       role: m.role,
       managed: isManaged(m),
+      optedOut: false,
       members: rows.map((r) => ({
         userId: r.user_id,
         displayName: r.display_name,
@@ -237,6 +251,39 @@ export default async function groupRoutes(app) {
       })),
     };
   });
+
+  /* ---------------------------- Teilnahme (Teams) ----------------------------- */
+
+  // Team-Gruppen aus Authentik lassen sich nicht verlassen, aber abwählen: Solange
+  // active=false ist, erscheint man dort nicht und sieht weder Mitglieder noch Chat.
+  app.put(
+    "/groups/:groupId/participation",
+    {
+      ...auth,
+      schema: {
+        params: GROUP_ID_PARAMS,
+        body: {
+          type: "object",
+          required: ["active"],
+          additionalProperties: false,
+          properties: { active: { type: "boolean" } },
+        },
+      },
+    },
+    async (request) => {
+      const m = await requireMembership(request.params.groupId, request.user.id, { allowOptedOut: true });
+      if (!isManaged(m)) {
+        throw new HttpError(400, "Eigene Gruppen kannst du verlassen; abwählen geht nur bei Team-Gruppen.");
+      }
+      await query("UPDATE group_members SET opted_out = $3 WHERE group_id = $1 AND user_id = $2", [
+        m.group_id,
+        request.user.id,
+        !request.body.active,
+      ]);
+      request.log.info({ userId: request.user.id, groupId: m.group_id, active: request.body.active }, "Team-Teilnahme geändert");
+      return { id: m.group_id, optedOut: !request.body.active };
+    }
+  );
 
   /* ------------------------------ Verwaltung ---------------------------------- */
 

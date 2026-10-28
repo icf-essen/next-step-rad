@@ -481,3 +481,19 @@ input[type=range] { width: 100%; }
 }
 .nsr-reset-link code { font-size: 12px; word-break: break-all; }
 .nsr-reset-link small { grid-column: 1 / -1; margin: 0; }
+
+/* --------------------- Team-Gruppe abwählen ------------------------ */
+.nsr-participation { align-items: flex-start; gap: 10px; margin-bottom: 14px; cursor: pointer; }
+.nsr-participation input { margin-top: 3px; }
+.nsr-participation span { display: flex; flex-direction: column; gap: 4px; font-size: 14px; font-weight: 600; }
+.nsr-participation small { font-weight: 400; margin: 0; }
+.nsr-optout-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--nsr-border);
+  color: var(--nsr-ink-muted);
+}
+.nsr-participation input { accent-color: var(--nsr-accent); width: 17px; height: 17px; }

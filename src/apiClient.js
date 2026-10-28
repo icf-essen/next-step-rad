@@ -125,6 +125,8 @@ export async function getGroup(groupId) {
 export const getMessages = (groupId, afterId) =>
   request("GET", g(groupId) + "/messages" + (afterId ? "?after=" + afterId : ""));
 export const sendMessage = (groupId, text) => request("POST", g(groupId) + "/messages", { text });
+/** Team-Gruppe ab- oder wieder anwählen. */
+export const setParticipation = (groupId, active) => request("PUT", g(groupId) + "/participation", { active });
 
 /* ------------------------- Verwaltung / Passwort ------------------------ */
 

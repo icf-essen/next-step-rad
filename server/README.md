@@ -38,6 +38,7 @@ Browser ──HTTPS──► Caddy
 | PATCH | `/groups/:id` | Leitung | Umbenennen `{name}` (nicht bei Team-Gruppen) |
 | POST | `/groups/:id/transfer` | Leitung | Leitung abgeben `{userId}` (nicht bei Team-Gruppen) |
 | POST | `/groups/:id/leave` | ✓ | Austreten `{successorId?}` (nicht bei Team-Gruppen) |
+| PUT | `/groups/:id/participation` | ✓ | Team-Gruppe ab-/anwählen `{active}` (nur Team-Gruppen) |
 | DELETE | `/groups/:id/members/:userId` | Leitung | Mitglied entfernen (nicht bei Team-Gruppen) |
 | GET | `/groups/:id/messages?after=ID` | ✓ | Chat (letzte 200 bzw. neuere als ID) |
 | POST | `/groups/:id/messages` | ✓ | `{text}` |
@@ -65,6 +66,9 @@ Browser ──HTTPS──► Caddy
 - Authentik-Gruppen, die auf `-team` enden, werden Team-Gruppen; wer in `<team>-leitung`
   ist, leitet sie. Abgleich bei jeder SSO-Anmeldung. Team-Gruppen sind in der App
   schreibgeschützt (kein Code, kein Austreten, keine Verwaltung).
+- Team-Gruppen lassen sich nicht verlassen, aber **abwählen**: Solange abgewählt, erscheint
+  man dort nicht (Mitglieder, Check-ins, Zählung) und sieht weder Mitglieder noch Chat.
+  Die Entscheidung bleibt über den Abgleich mit Authentik hinweg bestehen.
 - Eigene Gruppen funktionieren unabhängig davon für alle wie bisher.
 
 ## Sicherheit
@@ -98,7 +102,7 @@ und löscht die Konten am Ende wieder.
 `migrations/` enthält das Schema in Reihenfolge. Ausführen als Eigentümer, nicht als App-Rolle:
 
 ```bash
-sudo -u postgres psql -d nextstep -v ON_ERROR_STOP=1 -f migrations/003_admin_und_passwort_reset.sql
+sudo -u postgres psql -d nextstep -v ON_ERROR_STOP=1 -f migrations/004_team_gruppen_abwaehlen.sql
 ```
 
 ## Noch nicht enthalten

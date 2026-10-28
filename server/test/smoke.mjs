@@ -139,6 +139,10 @@ async function main() {
   const annaInB = r.data?.members?.find((m) => m.userId === aId);
   check("B sieht A's letzten geteilten Check-in mit Scores", annaInB?.latestCheckin?.weekId === "2026-W42" && annaInB?.latestCheckin?.scores?.arbeit === 9, annaInB);
   check("Keine E-Mail-Adressen in der Mitgliederliste", !JSON.stringify(r.data).includes("@test.local"));
+  r = await B.req("PUT", `/groups/${gid}/participation`, { active: false });
+  check("Eigene Gruppe lässt sich nicht abwählen (nur verlassen) -> 400", r.status === 400, r);
+  r = await C.req("PUT", `/groups/${gid}/participation`, { active: false });
+  check("Außenstehende können Teilnahme nicht ändern -> 404", r.status === 404, r);
   r = await B.req("PATCH", `/groups/${gid}`, { name: "Gekapert" });
   check("Mitglied darf Gruppe nicht umbenennen -> 403", r.status === 403, r);
   r = await B.req("DELETE", `/groups/${gid}/members/${aId}`);
