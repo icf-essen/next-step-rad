@@ -1,7 +1,7 @@
 import React, { useId, useState } from "react";
-import { LogIn, UserPlus } from "lucide-react";
+import { KeyRound, LogIn, UserPlus } from "lucide-react";
 import { VERSE } from "../constants.js";
-import { login, register } from "../apiClient.js";
+import { login, register, startSso } from "../apiClient.js";
 
 const MIN_PASSWORD = 10;
 
@@ -21,7 +21,7 @@ function Field({ label, hint, ...inputProps }) {
   );
 }
 
-export function AuthView({ onAuthenticated }) {
+export function AuthView({ options, ssoError, onAuthenticated }) {
   const [mode, setMode] = useState("login"); // "login" | "register"
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -72,6 +72,27 @@ export function AuthView({ onAuthenticated }) {
       <main className="nsr-main">
         <div className="nsr-view nsr-auth">
           <p className="nsr-verse">{VERSE}</p>
+
+          {ssoError && (
+            <p className="nsr-error nsr-auth-notice" role="alert">
+              {ssoError}
+            </p>
+          )}
+
+          {options?.sso && (
+            <>
+              <button
+                type="button"
+                className="nsr-btn nsr-btn-primary nsr-btn-wide nsr-sso-btn"
+                onClick={() => startSso("login")}
+              >
+                <KeyRound size={16} /> {options.ssoLabel || "Mit ICF-Konto anmelden"}
+              </button>
+              <div className="nsr-divider">
+                <span>oder mit E-Mail und Passwort</span>
+              </div>
+            </>
+          )}
 
           <div className="nsr-auth-tabs" role="tablist">
             <button

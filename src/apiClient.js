@@ -49,6 +49,13 @@ async function request(method, path, body, { allow401 = false } = {}) {
 
 /* ------------------------------- Konto ------------------------------- */
 
+export const getAuthOptions = () => request("GET", "/auth/options", undefined, { allow401: true });
+/** Startet die Anmeldung über Authentik (ganze Seite wird umgeleitet). */
+export function startSso(mode = "login") {
+  window.location.assign(BASE + "/auth/oidc/start?mode=" + encodeURIComponent(mode));
+}
+export const unlinkSso = () => request("DELETE", "/me/sso");
+
 export const getMe = () => request("GET", "/me", undefined, { allow401: true });
 export const register = (email, password, displayName) =>
   request("POST", "/auth/register", { email, password, displayName }, { allow401: true });
@@ -58,7 +65,8 @@ export const updateDisplayName = (displayName) => request("PATCH", "/me", { disp
 export const saveColors = (colors) => request("PUT", "/me/colors", { colors });
 export const changePassword = (currentPassword, newPassword) =>
   request("POST", "/me/password", { currentPassword, newPassword });
-export const deleteAccount = (password) => request("DELETE", "/me", { password });
+/** Bestätigung: { password } bei Konten mit Passwort, sonst { confirm: "LÖSCHEN" }. */
+export const deleteAccount = (confirmation) => request("DELETE", "/me", confirmation);
 
 /* ------------------------------ Check-ins ---------------------------- */
 
@@ -90,28 +98,30 @@ export async function saveEntry(weekId, { scores, nextStep, sharedWithGroup }) {
 
 export const deleteEntry = (weekId) => request("DELETE", "/checkins/" + encodeURIComponent(weekId));
 
-/* ------------------------------- Gruppe ------------------------------ */
+/* ------------------------------ Gruppen ------------------------------ */
 
+const g = (groupId) => "/groups/" + encodeURIComponent(groupId);
+
+export const listGroups = () => request("GET", "/groups");
 export const createGroup = (name) => request("POST", "/groups", { name });
 export const joinGroup = (code) => request("POST", "/groups/join", { code });
-export const renameGroup = (name) => request("PATCH", "/group", { name });
-export const transferAdmin = (userId) => request("POST", "/group/transfer", { userId });
-export const leaveGroup = (successorId) =>
-  request("POST", "/group/leave", successorId ? { successorId } : {});
-export const removeMember = (userId) => request("DELETE", "/group/members/" + encodeURIComponent(userId));
+export const renameGroup = (groupId, name) => request("PATCH", g(groupId), { name });
+export const transferAdmin = (groupId, userId) => request("POST", g(groupId) + "/transfer", { userId });
+export const leaveGroup = (groupId, successorId) =>
+  request("POST", g(groupId) + "/leave", successorId ? { successorId } : {});
+export const removeMember = (groupId, userId) =>
+  request("DELETE", g(groupId) + "/members/" + encodeURIComponent(userId));
 
-/** Gruppe mit Mitgliedern, oder null, wenn man in keiner Gruppe (mehr) ist. */
-export async function getGroup() {
+/** Gruppe mit Mitgliedern, oder null, wenn man (nicht mehr) Mitglied ist. */
+export async function getGroup(groupId) {
   try {
-    return await request("GET", "/group");
+    return await request("GET", g(groupId));
   } catch (e) {
     if (e.status === 404) return null;
     throw e;
   }
 }
 
-export function getMessages(afterId) {
-  return request("GET", "/group/messages" + (afterId ? "?after=" + afterId : ""));
-}
-
-export const sendMessage = (text) => request("POST", "/group/messages", { text });
+export const getMessages = (groupId, afterId) =>
+  request("GET", g(groupId) + "/messages" + (afterId ? "?after=" + afterId : ""));
+export const sendMessage = (groupId, text) => request("POST", g(groupId) + "/messages", { text });

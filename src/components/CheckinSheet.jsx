@@ -102,7 +102,7 @@ export function CheckinSheet({
                   checked={shareWithGroup}
                   onChange={(e) => setShareWithGroup(e.target.checked)}
                 />
-                <span>Mit meiner Gruppe teilen</span>
+                <span>Mit meinen Gruppen teilen</span>
               </label>
             )}
             {error && (

@@ -1,13 +1,30 @@
 import React, { useState, useEffect, useRef } from "react";
-import { UserPlus, LogIn, Copy, LogOut, Pencil, Check, Trash2, Send, X, Crown } from "lucide-react";
+import {
+  UserPlus,
+  LogIn,
+  Copy,
+  LogOut,
+  Pencil,
+  Check,
+  Trash2,
+  Send,
+  X,
+  Crown,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import { AREA_META } from "../constants.js";
 import { timeAgo } from "../utils/date.js";
 import { MiniBars } from "./MiniBars.jsx";
 
 export function GroupsView({
-  me,
+  groups,
   colors,
+  selectedGroupId,
   groupState,
+  listError,
+  onSelectGroup,
+  onBack,
   onCreateGroup,
   onJoinGroup,
   onLeaveGroup,
@@ -16,21 +33,40 @@ export function GroupsView({
   onTransferAdmin,
   onSendChat,
 }) {
+  if (selectedGroupId) {
+    const summary = groups.find((g) => g.id === selectedGroupId);
+    return (
+      <GroupDetail
+        key={selectedGroupId}
+        summary={summary}
+        colors={colors}
+        groupState={groupState}
+        onBack={onBack}
+        onLeaveGroup={onLeaveGroup}
+        onRenameGroup={onRenameGroup}
+        onRemoveMember={onRemoveMember}
+        onTransferAdmin={onTransferAdmin}
+        onSendChat={onSendChat}
+      />
+    );
+  }
+  return (
+    <GroupList
+      groups={groups}
+      error={listError}
+      onSelectGroup={onSelectGroup}
+      onCreateGroup={onCreateGroup}
+      onJoinGroup={onJoinGroup}
+    />
+  );
+}
+
+/* ------------------------------- Übersicht ------------------------------- */
+
+function GroupList({ groups, error, onSelectGroup, onCreateGroup, onJoinGroup }) {
   const [codeInput, setCodeInput] = useState("");
   const [newGroupName, setNewGroupName] = useState("");
-  const [chatInput, setChatInput] = useState("");
-  const [editingName, setEditingName] = useState(false);
-  const [nameDraft, setNameDraft] = useState("");
-  const [showSuccessorPicker, setShowSuccessorPicker] = useState(false);
-  const [successorId, setSuccessorId] = useState(null);
   const [busy, setBusy] = useState(false);
-  const chatEndRef = useRef(null);
-
-  const myGroup = me.group;
-  const group = groupState.group;
-  const isAdmin = myGroup?.role === "admin";
-  const members = group?.members || [];
-  const otherMembers = members.filter((m) => !m.isMe);
 
   async function withBusy(fn) {
     setBusy(true);
@@ -41,8 +77,142 @@ export function GroupsView({
     }
   }
 
+  return (
+    <div className="nsr-view">
+      <h2 className="nsr-view-title">Gruppen</h2>
+
+      {groups.length === 0 ? (
+        <p className="nsr-hint" style={{ marginBottom: 18 }}>
+          Bildet zusammen eine kleine Gruppe (z. B. mit eurer Smallgroup), teilt eure Bewertungen der Lebensbereiche und
+          ermutigt euch gegenseitig bei euren Next Steps.
+        </p>
+      ) : (
+        <div className="nsr-group-list">
+          {groups.map((g) => (
+            <button
+              type="button"
+              key={g.id}
+              className="nsr-card nsr-group-item"
+              onClick={() => onSelectGroup(g.id)}
+              aria-label={"Gruppe " + g.name + " öffnen"}
+            >
+              <div className="nsr-group-item-main">
+                <p className="nsr-group-item-name">{g.name}</p>
+                <div className="nsr-group-item-meta">
+                  {g.managed && <span className="nsr-team-badge">Team</span>}
+                  {g.role === "admin" && <span className="nsr-admin-badge">Leitung</span>}
+                  <span>
+                    {g.memberCount} {g.memberCount === 1 ? "Mitglied" : "Mitglieder"}
+                  </span>
+                </div>
+              </div>
+              <ChevronRight size={18} className="nsr-drawer-chevron" />
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="nsr-card">
+        <p className="nsr-sheet-subhead">Neue Gruppe erstellen</p>
+        <p className="nsr-hint">Du leitest die Gruppe und bekommst einen Code, den du teilen kannst.</p>
+        <form
+          className="nsr-field-row"
+          onSubmit={(e) => {
+            e.preventDefault();
+            withBusy(async () => {
+              await onCreateGroup(newGroupName);
+              setNewGroupName("");
+            });
+          }}
+        >
+          <input
+            type="text"
+            className="nsr-input"
+            placeholder="Name, z. B. Hauskreis Mitte"
+            aria-label="Name der neuen Gruppe"
+            value={newGroupName}
+            onChange={(e) => setNewGroupName(e.target.value)}
+            maxLength={40}
+          />
+          <button type="submit" className="nsr-btn nsr-btn-primary" disabled={busy}>
+            <UserPlus size={16} /> Erstellen
+          </button>
+        </form>
+      </div>
+
+      <div className="nsr-card">
+        <p className="nsr-sheet-subhead">Gruppe beitreten</p>
+        <p className="nsr-hint">Gib den Code ein, den du von deiner Gruppe bekommen hast.</p>
+        <form
+          className="nsr-field-row"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!codeInput.trim()) return;
+            withBusy(async () => {
+              await onJoinGroup(codeInput);
+              setCodeInput("");
+            });
+          }}
+        >
+          <input
+            type="text"
+            className="nsr-input"
+            placeholder="z. B. AB12CD"
+            aria-label="Gruppen-Code"
+            value={codeInput}
+            onChange={(e) => setCodeInput(e.target.value)}
+            maxLength={12}
+            autoCapitalize="characters"
+            autoComplete="off"
+          />
+          <button type="submit" className="nsr-btn nsr-btn-secondary" disabled={!codeInput.trim() || busy}>
+            <LogIn size={16} /> Beitreten
+          </button>
+        </form>
+      </div>
+
+      {error && <p className="nsr-error">{error}</p>}
+    </div>
+  );
+}
+
+/* -------------------------------- Detail --------------------------------- */
+
+function GroupDetail({
+  summary,
+  colors,
+  groupState,
+  onBack,
+  onLeaveGroup,
+  onRenameGroup,
+  onRemoveMember,
+  onTransferAdmin,
+  onSendChat,
+}) {
+  const [chatInput, setChatInput] = useState("");
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
+  const [showSuccessorPicker, setShowSuccessorPicker] = useState(false);
+  const [successorId, setSuccessorId] = useState(null);
+  const chatEndRef = useRef(null);
+
+  const group = groupState.group;
+  const managed = group ? group.managed : !!summary?.managed;
+  const isAdmin = (group ? group.role : summary?.role) === "admin";
+  const canManage = isAdmin && !managed;
+  const members = group?.members || [];
+  const otherMembers = members.filter((m) => !m.isMe);
+  const otherAdmins = otherMembers.filter((m) => m.role === "admin");
+  const groupName = group?.name || summary?.name || "";
+  const code = group?.code || summary?.code;
+
+  useEffect(() => {
+    if (chatEndRef.current) chatEndRef.current.scrollIntoView({ block: "nearest" });
+  }, [groupState.chat.length]);
+
   function handleLeaveClick() {
-    if (isAdmin && otherMembers.length > 0) {
+    // Nachfolger nur nötig, wenn man die letzte Leitung ist und noch jemand bleibt.
+    if (isAdmin && otherAdmins.length === 0 && otherMembers.length > 0) {
       setSuccessorId(otherMembers[0].userId);
       setShowSuccessorPicker(true);
     } else if (window.confirm("Willst du die Gruppe wirklich verlassen?")) {
@@ -50,87 +220,11 @@ export function GroupsView({
     }
   }
 
-  useEffect(() => {
-    if (chatEndRef.current) chatEndRef.current.scrollIntoView({ block: "nearest" });
-  }, [groupState.chat.length]);
-
-  useEffect(() => {
-    setEditingName(false);
-  }, [myGroup?.id]);
-
-  /* ---------------------------- Keine Gruppe ---------------------------- */
-  if (!myGroup) {
-    return (
-      <div className="nsr-view">
-        <h2 className="nsr-view-title">Gruppen</h2>
-        <p className="nsr-hint" style={{ marginBottom: 18 }}>
-          Bildet zusammen eine kleine Gruppe (z. B. mit eurer Smallgroup), teilt eure Bewertungen der Lebensbereiche und
-          ermutigt euch gegenseitig bei euren Next Steps.
-        </p>
-
-        <div className="nsr-card">
-          <p className="nsr-sheet-subhead">Neue Gruppe erstellen</p>
-          <p className="nsr-hint">Du leitest die Gruppe und bekommst einen Code, den du teilen kannst.</p>
-          <form
-            className="nsr-field-row"
-            onSubmit={(e) => {
-              e.preventDefault();
-              withBusy(() => onCreateGroup(newGroupName));
-            }}
-          >
-            <input
-              type="text"
-              className="nsr-input"
-              placeholder="Name, z. B. Hauskreis Mitte"
-              value={newGroupName}
-              onChange={(e) => setNewGroupName(e.target.value)}
-              maxLength={40}
-            />
-            <button type="submit" className="nsr-btn nsr-btn-primary" disabled={busy}>
-              <UserPlus size={16} /> Erstellen
-            </button>
-          </form>
-        </div>
-
-        <div className="nsr-card">
-          <p className="nsr-sheet-subhead">Gruppe beitreten</p>
-          <p className="nsr-hint">Gib den Code ein, den du von deiner Gruppe bekommen hast.</p>
-          <form
-            className="nsr-field-row"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (codeInput.trim()) withBusy(() => onJoinGroup(codeInput));
-            }}
-          >
-            <input
-              type="text"
-              className="nsr-input"
-              placeholder="z. B. AB12CD"
-              value={codeInput}
-              onChange={(e) => setCodeInput(e.target.value)}
-              maxLength={12}
-              autoCapitalize="characters"
-              autoComplete="off"
-            />
-            <button type="submit" className="nsr-btn nsr-btn-secondary" disabled={!codeInput.trim() || busy}>
-              <LogIn size={16} /> Beitreten
-            </button>
-          </form>
-        </div>
-
-        <p className="nsr-hint">Du kannst immer nur in einer Gruppe gleichzeitig sein.</p>
-
-        {groupState.error && <p className="nsr-error">{groupState.error}</p>}
-      </div>
-    );
-  }
-
-  /* ---------------------------- In einer Gruppe -------------------------- */
-  const groupName = group?.name || myGroup.name;
-
   return (
     <div className="nsr-view">
-      <h2 className="nsr-view-title">Gruppen</h2>
+      <button type="button" className="nsr-back-btn" onClick={onBack}>
+        <ChevronLeft size={16} /> Alle Gruppen
+      </button>
 
       <div className="nsr-card nsr-code-card">
         <div className="nsr-code-info">
@@ -149,6 +243,7 @@ export function GroupsView({
                 value={nameDraft}
                 onChange={(e) => setNameDraft(e.target.value)}
                 placeholder="Name der Gruppe"
+                aria-label="Name der Gruppe"
                 maxLength={40}
                 autoFocus
               />
@@ -159,12 +254,12 @@ export function GroupsView({
           ) : (
             <div className="nsr-group-name-row">
               <p className="nsr-group-name">{groupName}</p>
-              {isAdmin && (
+              {canManage && (
                 <button
                   className="nsr-icon-btn"
                   aria-label="Gruppennamen ändern"
                   onClick={() => {
-                    setNameDraft(groupName || "");
+                    setNameDraft(groupName);
                     setEditingName(true);
                   }}
                 >
@@ -173,25 +268,42 @@ export function GroupsView({
               )}
             </div>
           )}
-          <p className="nsr-hint" style={{ margin: "2px 0 0" }}>
-            Code: <strong style={{ color: "var(--nsr-ink)", letterSpacing: "0.03em" }}>{myGroup.code}</strong>
-          </p>
+          {managed ? (
+            <p className="nsr-managed-note">
+              <span className="nsr-team-badge">Team</span> Mitglieder und Leitung werden über Authentik gepflegt.
+            </p>
+          ) : (
+            code && (
+              <p className="nsr-hint" style={{ margin: "2px 0 0" }}>
+                Code: <strong style={{ color: "var(--nsr-ink)", letterSpacing: "0.03em" }}>{code}</strong>
+              </p>
+            )
+          )}
         </div>
-        <div className="nsr-code-actions">
-          <button
-            className="nsr-icon-btn"
-            title="Code kopieren"
-            aria-label="Code kopieren"
-            onClick={() => {
-              if (navigator.clipboard) navigator.clipboard.writeText(myGroup.code);
-            }}
-          >
-            <Copy size={18} />
-          </button>
-          <button className="nsr-icon-btn" title="Gruppe verlassen" aria-label="Gruppe verlassen" onClick={handleLeaveClick}>
-            <LogOut size={18} />
-          </button>
-        </div>
+        {!managed && (
+          <div className="nsr-code-actions">
+            {code && (
+              <button
+                className="nsr-icon-btn"
+                title="Code kopieren"
+                aria-label="Code kopieren"
+                onClick={() => {
+                  if (navigator.clipboard) navigator.clipboard.writeText(code);
+                }}
+              >
+                <Copy size={18} />
+              </button>
+            )}
+            <button
+              className="nsr-icon-btn"
+              title="Gruppe verlassen"
+              aria-label="Gruppe verlassen"
+              onClick={handleLeaveClick}
+            >
+              <LogOut size={18} />
+            </button>
+          </div>
+        )}
       </div>
 
       {showSuccessorPicker && (
@@ -258,20 +370,26 @@ export function GroupsView({
                   </span>
                   <div className="nsr-member-actions">
                     {c && <MiniBars scores={c.scores} colors={colors} />}
-                    {isAdmin && !m.isMe && (
+                    {canManage && !m.isMe && (
                       <>
-                        <button
-                          className="nsr-icon-btn"
-                          title="Leitung übergeben"
-                          aria-label={"Leitung an " + (m.displayName || "diese Person") + " übergeben"}
-                          onClick={() => {
-                            if (window.confirm(`Leitung an ${m.displayName || "diese Person"} übergeben? Du bleibst normales Mitglied.`)) {
-                              onTransferAdmin(m.userId);
-                            }
-                          }}
-                        >
-                          <Crown size={16} />
-                        </button>
+                        {m.role !== "admin" && (
+                          <button
+                            className="nsr-icon-btn"
+                            title="Leitung übergeben"
+                            aria-label={"Leitung an " + (m.displayName || "diese Person") + " übergeben"}
+                            onClick={() => {
+                              if (
+                                window.confirm(
+                                  `Leitung an ${m.displayName || "diese Person"} übergeben? Du bleibst normales Mitglied.`
+                                )
+                              ) {
+                                onTransferAdmin(m.userId);
+                              }
+                            }}
+                          >
+                            <Crown size={16} />
+                          </button>
+                        )}
                         <button
                           className="nsr-icon-btn"
                           title="Aus der Gruppe entfernen"
@@ -301,7 +419,7 @@ export function GroupsView({
               </div>
             );
           })}
-          {members.length === 1 && (
+          {members.length === 1 && !managed && (
             <p className="nsr-empty">Noch niemand hier außer dir. Teile den Code, damit andere beitreten können.</p>
           )}
         </div>
@@ -340,6 +458,7 @@ export function GroupsView({
             type="text"
             className="nsr-input"
             placeholder="Schreib eine Ermutigung …"
+            aria-label="Nachricht"
             value={chatInput}
             onChange={(e) => setChatInput(e.target.value)}
             maxLength={2000}

@@ -42,3 +42,28 @@ export const config = {
 
   logLevel: process.env.LOG_LEVEL || "info",
 };
+
+// Öffentliche Adresse der App (ohne Pfad). Daraus werden Redirect-URI und
+// Rücksprungadresse nach dem SSO-Login gebildet – nie aus dem Host-Header.
+config.publicUrl = (process.env.PUBLIC_URL || config.allowedOrigins[0]).replace(/\/$/, "");
+
+// Anmeldung über Authentik (OIDC). Ohne OIDC_ISSUER ist SSO abgeschaltet.
+config.oidc = process.env.OIDC_ISSUER
+  ? {
+      issuer: process.env.OIDC_ISSUER,
+      clientId: required("OIDC_CLIENT_ID"),
+      clientSecret: required("OIDC_CLIENT_SECRET"),
+      redirectUri: config.publicUrl + config.apiPrefix + "/auth/oidc/callback",
+      scopes: process.env.OIDC_SCOPES || "openid email profile nextstep_groups",
+      groupsClaim: process.env.OIDC_GROUPS_CLAIM || "nextstep_groups",
+      // Authentik-Gruppen, die als Team-Gruppen übernommen werden (regulärer Ausdruck).
+      teamGroupPattern: new RegExp(process.env.OIDC_TEAM_GROUP_PATTERN || "-team$"),
+      // Wer in "<team><suffix>" ist, leitet das Team.
+      leaderSuffix: process.env.OIDC_LEADER_SUFFIX || "-leitung",
+      // Optional: nur Mitglieder dieser Authentik-Gruppe dürfen sich per SSO anmelden.
+      requiredGroup: process.env.OIDC_REQUIRED_GROUP || null,
+      // Kürzere Sitzungen, damit Änderungen in Authentik zeitnah greifen.
+      sessionDays: int("OIDC_SESSION_DAYS", 7),
+      buttonLabel: process.env.OIDC_BUTTON_LABEL || "Mit ICF-Konto anmelden",
+    }
+  : null;

@@ -12,6 +12,7 @@ import {
 import * as api from "./apiClient.js";
 import { AREA_ORDER, AREA_META, VERSE } from "./constants.js";
 import { getISOWeekId } from "./utils/date.js";
+import { ssoMessage } from "./utils/sso.js";
 import { Wheel } from "./components/Wheel.jsx";
 import { InfoSheet } from "./components/InfoSheet.jsx";
 import { CheckinSheet } from "./components/CheckinSheet.jsx";
@@ -29,8 +30,23 @@ function defaultColors() {
   return colors;
 }
 
+/** Rückmeldung aus dem SSO-Ablauf (?sso=… / ?sso_error=…) einmalig auslesen und aus der Adresse entfernen. */
+function takeSsoResult() {
+  const params = new URLSearchParams(window.location.search);
+  const result = { ok: params.get("sso"), error: params.get("sso_error") };
+  if (result.ok || result.error) {
+    params.delete("sso");
+    params.delete("sso_error");
+    const rest = params.toString();
+    window.history.replaceState(null, "", window.location.pathname + (rest ? "?" + rest : "") + window.location.hash);
+  }
+  return result;
+}
+
 export default function NextStepRad() {
   const [authChecked, setAuthChecked] = useState(false);
+  const [authOptions, setAuthOptions] = useState({ sso: false, ssoLabel: null });
+  const [ssoError, setSsoError] = useState("");
   const [me, setMe] = useState(null);
   const [entriesLoaded, setEntriesLoaded] = useState(false);
   const [entries, setEntries] = useState([]);
@@ -47,7 +63,9 @@ export default function NextStepRad() {
   const [saving, setSaving] = useState(false);
   const [checkinError, setCheckinError] = useState("");
   const [toast, setToast] = useState("");
+  const [selectedGroupId, setSelectedGroupId] = useState(null);
   const [groupState, setGroupState] = useState(EMPTY_GROUP);
+  const [groupsError, setGroupsError] = useState("");
   const [showAnleitung, setShowAnleitung] = useState(false);
   const [colors, setColors] = useState(defaultColors());
 
@@ -55,6 +73,10 @@ export default function NextStepRad() {
   useEffect(() => {
     meRef.current = me;
   }, [me]);
+  const groupStateRef = useRef(groupState);
+  useEffect(() => {
+    groupStateRef.current = groupState;
+  }, [groupState]);
 
   /* --- Sitzung prüfen und Daten laden --- */
   const applyMe = useCallback((data) => {
@@ -66,11 +88,20 @@ export default function NextStepRad() {
     setMe(null);
     setEntries([]);
     setEntriesLoaded(false);
+    setSelectedGroupId(null);
     setGroupState(EMPTY_GROUP);
     setView("home");
     setMenuOpen(false);
     setCheckinOpen(false);
   }, []);
+
+  const refreshMe = useCallback(async () => {
+    try {
+      applyMe(await api.getMe());
+    } catch {
+      /* 401 wird zentral behandelt, sonst alten Stand behalten */
+    }
+  }, [applyMe]);
 
   useEffect(() => {
     // Läuft eine Sitzung ab, landet man wieder auf der Anmeldeseite.
@@ -80,11 +111,23 @@ export default function NextStepRad() {
         setToast("Bitte melde dich erneut an.");
       }
     });
+    const sso = takeSsoResult();
     (async () => {
+      api.getAuthOptions().then(setAuthOptions).catch(() => {});
+      let current = null;
       try {
-        applyMe(await api.getMe());
+        current = await api.getMe();
+        applyMe(current);
       } catch (e) {
         if (e.status !== 401) setLoadError(e.message);
+      }
+      if (sso.error) {
+        // Angemeldet (z. B. beim Verbinden) als Hinweis, sonst auf der Anmeldeseite.
+        if (current) setToast(ssoMessage(sso.error));
+        else setSsoError(ssoMessage(sso.error));
+      } else if (sso.ok === "linked") {
+        setView("settings");
+        setToast("Dein ICF-Konto ist jetzt verbunden.");
       }
       setAuthChecked(true);
     })();
@@ -104,64 +147,75 @@ export default function NextStepRad() {
   const currentWeekId = getISOWeekId();
   const hasCheckedInThisWeek = entries.some((e) => e.weekId === currentWeekId);
   const latestScores = entries.length > 0 ? entries[entries.length - 1].scores : {};
-  const inGroup = !!me?.group;
+  const myGroups = me?.groups || [];
+  const inAnyGroup = myGroups.length > 0;
 
-  /* --- Toast automatisch ausblenden --- */
+  /* --- Toast automatisch ausblenden (längere Texte bleiben länger stehen) --- */
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(""), 2600);
+    const t = setTimeout(() => setToast(""), Math.max(2600, toast.length * 55));
     return () => clearTimeout(t);
   }, [toast]);
 
-  /* --- Gruppendaten laden + Polling --- */
-  const loadGroupData = useCallback(async () => {
-    setGroupState((prev) => ({ ...prev, loading: true }));
-    try {
-      const group = await api.getGroup();
-      if (!group) {
-        // Nicht (mehr) in einer Gruppe, z. B. von der Gruppenleitung entfernt.
-        const wasInGroup = !!meRef.current?.group;
-        setMe((prev) => (prev ? { ...prev, group: null } : prev));
-        setGroupState(EMPTY_GROUP);
-        if (wasInGroup) setToast("Du bist nicht mehr in dieser Gruppe.");
-        return;
+  /* --- Gruppen: Übersicht beim Öffnen aktualisieren --- */
+  useEffect(() => {
+    if (view === "groups" && me) refreshMe();
+  }, [view]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* --- Ausgewählte Gruppe laden + Polling --- */
+  const loadGroupData = useCallback(
+    async (groupId) => {
+      try {
+        const group = await api.getGroup(groupId);
+        if (!group) {
+          // Nicht (mehr) Mitglied, z. B. von der Leitung entfernt oder aus dem Team in Authentik.
+          setSelectedGroupId(null);
+          setGroupState(EMPTY_GROUP);
+          setToast("Du bist nicht mehr in dieser Gruppe.");
+          refreshMe();
+          return;
+        }
+        const prev = groupStateRef.current;
+        const sameGroup = prev.group?.id === group.id;
+        const lastId = sameGroup && prev.chat.length ? prev.chat[prev.chat.length - 1].id : 0;
+        const fresh = await api.getMessages(groupId, lastId);
+        setGroupState((p) => {
+          const keep = p.group?.id === group.id;
+          const chat = keep ? [...p.chat, ...fresh.filter((m) => !p.chat.some((x) => x.id === m.id))] : fresh;
+          return { group, chat, loading: false, error: "" };
+        });
+      } catch (e) {
+        if (e.status === 401) return;
+        setGroupState((p) => ({ ...p, loading: false, error: "Gruppendaten konnten nicht geladen werden." }));
       }
-      // Beim ersten Laden alle Nachrichten holen, danach nur neuere.
-      setGroupState((prev) => ({ ...prev, group, loading: false, error: "" }));
-      setMe((prev) =>
-        prev ? { ...prev, group: { id: group.id, code: group.code, name: group.name, role: group.role } } : prev
-      );
-      const sameGroup = groupStateRef.current.group?.id === group.id;
-      const lastId = sameGroup && groupStateRef.current.chat.length
-        ? groupStateRef.current.chat[groupStateRef.current.chat.length - 1].id
-        : 0;
-      const fresh = await api.getMessages(lastId);
-      setGroupState((prev) => ({
-        ...prev,
-        chat: sameGroup ? [...prev.chat, ...fresh.filter((m) => !prev.chat.some((p) => p.id === m.id))] : fresh,
-      }));
-    } catch (e) {
-      if (e.status === 401) return;
-      setGroupState((prev) => ({ ...prev, loading: false, error: "Gruppendaten konnten nicht geladen werden." }));
-    }
-  }, []);
-
-  const groupStateRef = useRef(groupState);
-  useEffect(() => {
-    groupStateRef.current = groupState;
-  }, [groupState]);
+    },
+    [refreshMe]
+  );
 
   useEffect(() => {
-    if (view !== "groups" || !me?.group) return;
-    loadGroupData();
-    const interval = setInterval(loadGroupData, GROUP_POLL_MS);
+    if (view !== "groups" || !selectedGroupId) return;
+    loadGroupData(selectedGroupId);
+    const interval = setInterval(() => loadGroupData(selectedGroupId), GROUP_POLL_MS);
     return () => clearInterval(interval);
-  }, [view, me?.group?.id, loadGroupData]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [view, selectedGroupId, loadGroupData]);
+
+  function selectGroup(groupId) {
+    setGroupState({ ...EMPTY_GROUP, loading: true });
+    setGroupsError("");
+    setSelectedGroupId(groupId);
+  }
+
+  function backToGroupList() {
+    setSelectedGroupId(null);
+    setGroupState(EMPTY_GROUP);
+    refreshMe();
+  }
 
   /* --- Konto --- */
   function handleAuthenticated(data) {
     applyMe(data);
     setLoadError("");
+    setSsoError("");
     setView("home");
   }
 
@@ -203,8 +257,7 @@ export default function NextStepRad() {
       if (next[k] && next[k].toLowerCase() !== AREA_META[k].defaultColor.toLowerCase()) custom[k] = next[k];
     });
     try {
-      const data = await api.saveColors(custom);
-      setMe(data);
+      setMe(await api.saveColors(custom));
     } catch (e) {
       setToast(e.message);
     }
@@ -235,10 +288,20 @@ export default function NextStepRad() {
     setToast("Passwort geändert. Andere Geräte wurden abgemeldet.");
   }
 
-  async function handleDeleteAccount(password) {
-    await api.deleteAccount(password);
+  async function handleDeleteAccount(confirmation) {
+    await api.deleteAccount(confirmation);
     signOutLocally();
     setToast("Dein Konto wurde gelöscht.");
+  }
+
+  async function handleUnlinkSso() {
+    if (!window.confirm("Verbindung zum ICF-Konto trennen? Team-Gruppen aus Authentik verschwinden dann.")) return;
+    try {
+      applyMe(await api.unlinkSso());
+      setToast("Verbindung getrennt.");
+    } catch (e) {
+      setToast(e.message);
+    }
   }
 
   /* --- Check-in Flow --- */
@@ -266,7 +329,7 @@ export default function NextStepRad() {
         nextStep: { area: nextStepArea, text: nextStepText.trim() },
         // Ohne Gruppe wird der Eintrag als teilbar markiert, damit er nach einem
         // Beitritt sichtbar ist (wie bisher: letzter Eintrag wird beim Beitritt geteilt).
-        sharedWithGroup: inGroup ? shareWithGroup : true,
+        sharedWithGroup: inAnyGroup ? shareWithGroup : true,
       });
       setEntries((prev) =>
         [...prev.filter((e) => e.weekId !== weekId), entry].sort((a, b) => a.weekId.localeCompare(b.weekId))
@@ -280,62 +343,71 @@ export default function NextStepRad() {
   }
 
   /* --- Gruppen-Aktionen --- */
-  async function runGroupAction(fn, fallbackMessage) {
-    setGroupState((prev) => ({ ...prev, error: "" }));
+  async function runGroupAction(fn, fallbackMessage, { inDetail = true } = {}) {
+    const setError = (msg) =>
+      inDetail ? setGroupState((prev) => ({ ...prev, error: msg })) : setGroupsError(msg);
+    setError("");
     try {
       await fn();
     } catch (e) {
       if (e.status === 401) return;
-      setGroupState((prev) => ({ ...prev, error: e.message || fallbackMessage }));
+      setError(e.message || fallbackMessage);
     }
   }
 
   const createGroup = (name) =>
-    runGroupAction(async () => {
-      const g = await api.createGroup((name || "").trim() || "Meine Gruppe");
-      setGroupState(EMPTY_GROUP);
-      setMe((prev) => ({ ...prev, group: g }));
-    }, "Gruppe konnte nicht erstellt werden.");
+    runGroupAction(
+      async () => {
+        const g = await api.createGroup((name || "").trim() || "Meine Gruppe");
+        await refreshMe();
+        selectGroup(g.id);
+      },
+      "Gruppe konnte nicht erstellt werden.",
+      { inDetail: false }
+    );
 
   const joinGroup = (code) =>
-    runGroupAction(async () => {
-      const g = await api.joinGroup(code);
-      setGroupState(EMPTY_GROUP);
-      setMe((prev) => ({ ...prev, group: g }));
-    }, "Beitritt fehlgeschlagen.");
+    runGroupAction(
+      async () => {
+        const g = await api.joinGroup(code);
+        await refreshMe();
+        selectGroup(g.id);
+      },
+      "Beitritt fehlgeschlagen.",
+      { inDetail: false }
+    );
 
   const leaveGroup = (successorId) =>
     runGroupAction(async () => {
-      await api.leaveGroup(successorId);
-      setMe((prev) => ({ ...prev, group: null }));
-      setGroupState(EMPTY_GROUP);
+      await api.leaveGroup(selectedGroupId, successorId);
+      backToGroupList();
+      setToast("Du hast die Gruppe verlassen.");
     }, "Austritt fehlgeschlagen.");
 
   const removeMember = (userId) =>
     runGroupAction(async () => {
-      await api.removeMember(userId);
-      await loadGroupData();
+      await api.removeMember(selectedGroupId, userId);
+      await loadGroupData(selectedGroupId);
     }, "Mitglied konnte nicht entfernt werden.");
 
   const renameGroup = (rawName) =>
     runGroupAction(async () => {
       const name = (rawName || "").trim().slice(0, 40);
       if (!name) return;
-      const g = await api.renameGroup(name);
-      setMe((prev) => ({ ...prev, group: g }));
+      await api.renameGroup(selectedGroupId, name);
       setGroupState((prev) => (prev.group ? { ...prev, group: { ...prev.group, name } } : prev));
     }, "Name konnte nicht gespeichert werden.");
 
   const transferAdmin = (userId) =>
     runGroupAction(async () => {
-      await api.transferAdmin(userId);
-      await loadGroupData();
+      await api.transferAdmin(selectedGroupId, userId);
+      await loadGroupData(selectedGroupId);
     }, "Leitung konnte nicht übergeben werden.");
 
   const sendChatMessage = (text) =>
     runGroupAction(async () => {
       if (!text.trim()) return;
-      const msg = await api.sendMessage(text.trim());
+      const msg = await api.sendMessage(selectedGroupId, text.trim());
       setGroupState((prev) => ({ ...prev, chat: [...prev.chat, msg] }));
     }, "Nachricht konnte nicht gesendet werden.");
 
@@ -357,7 +429,7 @@ export default function NextStepRad() {
             <span>{loadError}</span>
           </div>
         )}
-        <AuthView onAuthenticated={handleAuthenticated} />
+        <AuthView options={authOptions} ssoError={ssoError} onAuthenticated={handleAuthenticated} />
         {toast && <div className="nsr-toast">{toast}</div>}
       </>
     );
@@ -395,6 +467,7 @@ export default function NextStepRad() {
                   className={"nsr-drawer-item" + (view === item.key ? " nsr-drawer-item-active" : "")}
                   onClick={() => {
                     setView(item.key);
+                    if (item.key === "groups") backToGroupList();
                     setMenuOpen(false);
                   }}
                 >
@@ -452,21 +525,28 @@ export default function NextStepRad() {
           <SettingsView
             me={me}
             colors={colors}
+            ssoAvailable={authOptions.sso}
             onUpdateName={updateName}
             onUpdateColor={updateColor}
             onResetColors={resetColors}
             onResetData={resetAllData}
             onChangePassword={handleChangePassword}
             onDeleteAccount={handleDeleteAccount}
+            onLinkSso={() => api.startSso("link")}
+            onUnlinkSso={handleUnlinkSso}
             onLogout={handleLogout}
           />
         )}
 
         {view === "groups" && (
           <GroupsView
-            me={me}
+            groups={myGroups}
             colors={colors}
+            selectedGroupId={selectedGroupId}
             groupState={groupState}
+            listError={groupsError}
+            onSelectGroup={selectGroup}
+            onBack={backToGroupList}
             onCreateGroup={createGroup}
             onJoinGroup={joinGroup}
             onLeaveGroup={leaveGroup}
@@ -495,7 +575,7 @@ export default function NextStepRad() {
           setNextStepArea={setNextStepArea}
           nextStepText={nextStepText}
           setNextStepText={setNextStepText}
-          canShare={inGroup}
+          canShare={inAnyGroup}
           shareWithGroup={shareWithGroup}
           setShareWithGroup={setShareWithGroup}
           onBack={() => setCheckinStep(1)}

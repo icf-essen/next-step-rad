@@ -71,7 +71,7 @@ async function main() {
   console.log("\nKonto");
   let r = await A.req("POST", "/auth/register", { email: `a-${suffix}@test.local`, password: pw, displayName: "Anna" });
   check("Registrierung A -> 201", r.status === 201, r);
-  check("Neues Konto hat keine Gruppe", r.data?.group === null);
+  check("Neues Konto hat keine Gruppen, Passwort, kein SSO", Array.isArray(r.data?.groups) && r.data.groups.length === 0 && r.data.hasPassword === true && r.data.ssoLinked === false);
   const aId = r.data?.id;
   r = await new Client("x").req("POST", "/auth/register", { email: `A-${suffix}@TEST.local`, password: pw });
   check("Doppelte E-Mail (andere Schreibweise) -> 409", r.status === 409, r);
@@ -114,10 +114,14 @@ async function main() {
 
   console.log("\nGruppen");
   r = await A.req("POST", "/groups", { name: "Hauskreis Test" });
-  check("Gruppe anlegen -> 201, A ist Admin", r.status === 201 && r.data?.role === "admin" && /^[A-Z0-9]{6}$/.test(r.data?.code), r);
+  check("Gruppe anlegen -> 201, A ist Leitung", r.status === 201 && r.data?.role === "admin" && /^[A-Z0-9]{6}$/.test(r.data?.code), r);
   const code = r.data?.code;
-  r = await A.req("POST", "/groups", { name: "Zweite" });
-  check("Zweite Gruppe -> 409 (nur eine pro Person)", r.status === 409, r);
+  const gid = r.data?.id;
+  r = await A.req("POST", "/groups", { name: "Zweite Gruppe" });
+  check("Zweite eigene Gruppe möglich (mehrere Gruppen pro Person)", r.status === 201, r);
+  const gid2 = r.data?.id;
+  r = await A.req("GET", "/me");
+  check("/me listet beide Gruppen", r.data?.groups?.length === 2 && r.data.groups.every((g) => g.managed === false), r.data);
 
   r = await B.req("POST", "/auth/register", { email: `b-${suffix}@test.local`, password: pw, displayName: "Ben" });
   const bId = r.data?.id;
@@ -127,59 +131,70 @@ async function main() {
   check("Falscher Code -> 404", r.status === 404, r);
   r = await B.req("POST", "/groups/join", { code: ` ${code.slice(0, 3).toLowerCase()}-${code.slice(3)} ` });
   check("Beitritt (Code klein/mit Trennzeichen)", r.status === 200 && r.data?.role === "member", r);
+  r = await B.req("POST", "/groups/join", { code });
+  check("Doppelter Beitritt -> 409", r.status === 409, r);
 
-  r = await B.req("GET", "/group");
+  r = await B.req("GET", `/groups/${gid}`);
   check("B sieht 2 Mitglieder", r.data?.members?.length === 2, r);
   const annaInB = r.data?.members?.find((m) => m.userId === aId);
   check("B sieht A's letzten geteilten Check-in mit Scores", annaInB?.latestCheckin?.weekId === "2026-W42" && annaInB?.latestCheckin?.scores?.arbeit === 9, annaInB);
   check("Keine E-Mail-Adressen in der Mitgliederliste", !JSON.stringify(r.data).includes("@test.local"));
-  r = await B.req("PATCH", "/group", { name: "Gekapert" });
+  r = await B.req("PATCH", `/groups/${gid}`, { name: "Gekapert" });
   check("Mitglied darf Gruppe nicht umbenennen -> 403", r.status === 403, r);
-  r = await B.req("DELETE", `/group/members/${aId}`);
+  r = await B.req("DELETE", `/groups/${gid}/members/${aId}`);
   check("Mitglied darf niemanden entfernen -> 403", r.status === 403, r);
 
-  r = await C.req("GET", "/group");
-  check("Außenstehende C sieht keine Gruppe -> 404", r.status === 404, r);
-  r = await C.req("GET", "/group/messages");
+  r = await C.req("GET", `/groups/${gid}`);
+  check("Außenstehende C sieht die Gruppe nicht -> 404", r.status === 404, r);
+  r = await C.req("GET", `/groups/${gid}/messages`);
   check("Außenstehende C liest keinen Chat -> 404", r.status === 404, r);
+  r = await C.req("POST", `/groups/${gid}/messages`, { text: "Spam" });
+  check("Außenstehende C schreibt nicht in den Chat -> 404", r.status === 404, r);
+  r = await B.req("GET", `/groups/${gid2}`);
+  check("B sieht A's zweite Gruppe nicht -> 404", r.status === 404, r);
   r = await C.req("PUT", "/checkins/2026-W42", { scores, nextStepArea: "glaube", nextStepText: "Cara privat", sharedWithGroup: true });
-  r = await B.req("GET", "/group");
+  r = await B.req("GET", `/groups/${gid}`);
   check("Check-ins von Nicht-Mitgliedern tauchen nicht auf", !JSON.stringify(r.data).includes("Cara privat"));
 
   await B.req("PUT", "/checkins/2026-W42", { scores, nextStepArea: "gesundheit", nextStepText: "Privat", sharedWithGroup: false });
-  r = await A.req("GET", "/group");
+  r = await A.req("GET", `/groups/${gid}`);
   check("Nicht geteilter Check-in bleibt privat", r.data?.members?.find((m) => m.userId === bId)?.latestCheckin === null, r.data);
 
   console.log("\nChat");
-  r = await A.req("POST", "/group/messages", { text: "Hallo zusammen!" });
+  r = await A.req("POST", `/groups/${gid}/messages`, { text: "Hallo zusammen!" });
   check("Nachricht senden -> 201", r.status === 201, r);
   const msgId = r.data?.id;
-  r = await B.req("GET", "/group/messages");
+  r = await B.req("GET", `/groups/${gid}/messages`);
   check("B liest Nachricht", r.data?.length === 1 && r.data[0].text === "Hallo zusammen!" && r.data[0].isMine === false, r);
-  r = await B.req("GET", `/group/messages?after=${msgId}`);
+  r = await B.req("GET", `/groups/${gid}/messages?after=${msgId}`);
   check("Polling mit after liefert nur Neueres", Array.isArray(r.data) && r.data.length === 0, r);
-  r = await A.req("POST", "/group/messages", { text: "x".repeat(2001) });
+  r = await A.req("GET", `/groups/${gid2}/messages`);
+  check("Chats sind pro Gruppe getrennt", Array.isArray(r.data) && r.data.length === 0, r);
+  r = await A.req("POST", `/groups/${gid}/messages`, { text: "x".repeat(2001) });
   check("Zu lange Nachricht -> 400", r.status === 400, r);
 
-  console.log("\nAdmin-Wechsel und Austritt");
-  r = await A.req("POST", "/group/transfer", { userId: bId });
-  check("Admin an B übergeben", r.status === 204, r);
-  check("A darf danach nicht mehr umbenennen", (await A.req("PATCH", "/group", { name: "x" })).status === 403);
-  check("B darf jetzt umbenennen", (await B.req("PATCH", "/group", { name: "Neuer Name" })).data?.name === "Neuer Name");
-  r = await B.req("DELETE", `/group/members/${aId}`);
-  check("Admin B entfernt A", r.status === 204, r);
-  check("A hat danach keine Gruppe", (await A.req("GET", "/group")).status === 404);
+  console.log("\nLeitung und Austritt");
+  r = await A.req("POST", `/groups/${gid}/transfer`, { userId: bId });
+  check("Leitung an B übergeben", r.status === 204, r);
+  check("A darf danach nicht mehr umbenennen", (await A.req("PATCH", `/groups/${gid}`, { name: "x" })).status === 403);
+  check("B darf jetzt umbenennen", (await B.req("PATCH", `/groups/${gid}`, { name: "Neuer Name" })).data?.name === "Neuer Name");
+  r = await B.req("DELETE", `/groups/${gid}/members/${aId}`);
+  check("Leitung B entfernt A", r.status === 204, r);
+  check("A sieht die Gruppe danach nicht mehr", (await A.req("GET", `/groups/${gid}`)).status === 404);
+  check("A ist weiter in der zweiten Gruppe", (await A.req("GET", "/me")).data?.groups?.length === 1);
   await A.req("POST", "/groups/join", { code });
-  r = await B.req("POST", "/group/leave", { successorId: aId });
-  check("Admin B tritt aus und bestimmt A", r.status === 204, r);
-  check("A ist jetzt Admin", (await A.req("GET", "/me")).data?.group?.role === "admin");
+  r = await B.req("POST", `/groups/${gid}/leave`, { successorId: aId });
+  check("Leitung B tritt aus und bestimmt A", r.status === 204, r);
+  check("A ist jetzt Leitung", (await A.req("GET", "/me")).data?.groups?.find((g) => g.id === gid)?.role === "admin");
+  r = await A.req("POST", `/groups/${gid2}/leave`, {});
+  check("Letzte Person verlässt Gruppe -> Gruppe gelöscht", r.status === 204 && (await A.req("POST", `/groups/${gid2}/leave`, {})).status === 404);
 
   console.log("\nSchutzmechanismen");
   r = await A.req("POST", "/group/messages", { text: "CSRF" }, { Origin: "https://boese.example" });
   check("Fremde Origin -> 403", r.status === 403, r);
   r = await A.req("POST", "/group/messages", undefined, { "Content-Type": "text/plain" });
   check("Formular-/Text-Body statt JSON abgelehnt", r.status >= 400 && r.status < 500, r);
-  r = await new Client("x").req("GET", "/group", undefined, { Cookie: "nsr_session=gefaelscht" });
+  r = await new Client("x").req("GET", "/groups", undefined, { Cookie: "nsr_session=gefaelscht" });
   check("Gefälschtes Session-Cookie -> 401", r.status === 401, r);
 
   r = await A2.req("POST", "/auth/logout", {});

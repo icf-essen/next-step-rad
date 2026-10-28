@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { RotateCcw, LogOut } from "lucide-react";
+import { RotateCcw, LogOut, KeyRound, CheckCircle2 } from "lucide-react";
 import { AREA_ORDER, AREA_META } from "../constants.js";
 
 const MIN_PASSWORD = 10;
@@ -13,6 +13,9 @@ export function SettingsView({
   onResetData,
   onChangePassword,
   onDeleteAccount,
+  onLinkSso,
+  onUnlinkSso,
+  ssoAvailable,
   onLogout,
 }) {
   const [name, setName] = useState(me.displayName || "");
@@ -57,7 +60,8 @@ export function SettingsView({
     if (!window.confirm("Konto mit allen Bewertungen endgültig löschen? Das lässt sich nicht rückgängig machen.")) return;
     setDelBusy(true);
     try {
-      await onDeleteAccount(delPassword);
+      // Konten ohne Passwort (nur ICF-Konto) bestätigen mit dem Wort „LÖSCHEN“.
+      await onDeleteAccount(me.hasPassword ? { password: delPassword } : { confirm: delPassword });
     } catch (err) {
       setDelError(err.message);
       setDelBusy(false);
@@ -119,11 +123,41 @@ export function SettingsView({
           Konto gespeichert und sind auf jedem Gerät verfügbar, auf dem du dich anmeldest.
         </p>
 
+        {me.ssoLinked ? (
+          <div style={{ marginBottom: 14 }}>
+            <p className="nsr-sso-status">
+              <CheckCircle2 size={17} color="var(--nsr-accent)" /> Mit deinem ICF-Konto verbunden
+            </p>
+            {me.hasPassword ? (
+              <button className="nsr-link-btn" onClick={onUnlinkSso}>
+                Verbindung trennen
+              </button>
+            ) : (
+              <p className="nsr-hint" style={{ margin: 0 }}>
+                Du meldest dich ausschließlich über dein ICF-Konto an.
+              </p>
+            )}
+          </div>
+        ) : (
+          ssoAvailable && (
+            <div style={{ marginBottom: 14 }}>
+              <p className="nsr-hint" style={{ marginTop: 0 }}>
+                Verbinde dein ICF-Konto, um dich künftig auch darüber anzumelden und deine Teams zu sehen.
+              </p>
+              <button className="nsr-btn nsr-btn-secondary" onClick={onLinkSso}>
+                <KeyRound size={16} /> ICF-Konto verbinden
+              </button>
+            </div>
+          )
+        )}
+
         {!pwOpen ? (
           <div className="nsr-btn-row">
-            <button className="nsr-btn nsr-btn-secondary" onClick={() => setPwOpen(true)}>
-              Passwort ändern
-            </button>
+            {me.hasPassword && (
+              <button className="nsr-btn nsr-btn-secondary" onClick={() => setPwOpen(true)}>
+                Passwort ändern
+              </button>
+            )}
             <button className="nsr-btn nsr-btn-ghost" onClick={onLogout}>
               <LogOut size={16} /> Abmelden
             </button>
@@ -197,14 +231,14 @@ export function SettingsView({
         ) : (
           <form className="nsr-auth-form" onSubmit={submitDelete}>
             <label className="nsr-field">
-              <span>Zur Bestätigung dein Passwort</span>
+              <span>{me.hasPassword ? "Zur Bestätigung dein Passwort" : "Zur Bestätigung „LÖSCHEN“ eingeben"}</span>
               <input
-                type="password"
+                type={me.hasPassword ? "password" : "text"}
                 className="nsr-input"
                 value={delPassword}
                 onChange={(e) => setDelPassword(e.target.value)}
                 required
-                autoComplete="current-password"
+                autoComplete={me.hasPassword ? "current-password" : "off"}
               />
             </label>
             {delError && <p className="nsr-error">{delError}</p>}

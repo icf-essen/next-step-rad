@@ -59,10 +59,12 @@ export default async function authRoutes(app) {
         [request.body.email.trim()]
       );
       const user = rows[0];
-      const ok = user
+      // Unbekannte E-Mail und Konten ohne Passwort (reine SSO-Konten) werden mit
+      // gleichem Rechenaufwand abgelehnt, damit die Antwortzeit nichts verrät.
+      const ok = user?.password_hash
         ? await verifyPassword(user.password_hash, request.body.password)
-        : await dummyVerify(request.body.password);
-      // Bewusst dieselbe Meldung für "unbekannt" und "falsches Passwort".
+        : (await dummyVerify(request.body.password)) && false;
+      // Bewusst dieselbe Meldung für "unbekannt", "falsches Passwort" und "nur SSO".
       if (!user || !ok) throw new HttpError(401, "E-Mail oder Passwort ist falsch.");
       await createSession(reply, user.id);
       return loadMe(user.id);

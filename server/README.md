@@ -16,26 +16,43 @@ Browser ──HTTPS──► Caddy
 |---|---|---|---|
 | GET | `/health` | – | DB erreichbar? |
 | GET | `/areas` | – | Die fünf Bereiche mit Standardfarben |
+| GET | `/auth/options` | – | Ist SSO aktiv, Beschriftung des Knopfs |
 | POST | `/auth/register` | – | Konto anlegen `{email, password, displayName?}` |
 | POST | `/auth/login` | – | Anmelden `{email, password}` |
 | POST | `/auth/logout` | – | Abmelden |
-| GET | `/me` | ✓ | Eigenes Profil, Farben, Gruppe |
+| GET | `/auth/oidc/start?mode=login\|link` | –/✓ | Weiterleitung zu Authentik |
+| GET | `/auth/oidc/callback` | – | Rücksprung von Authentik |
+| GET | `/me` | ✓ | Profil, Farben, Gruppen, `hasPassword`, `ssoLinked` |
 | PATCH | `/me` | ✓ | `{displayName}` |
 | PUT | `/me/colors` | ✓ | `{colors: {glaube: "#RRGGBB", …}}` (ersetzt komplett) |
 | POST | `/me/password` | ✓ | `{currentPassword, newPassword}`, beendet andere Sitzungen |
-| DELETE | `/me` | ✓ | Konto löschen `{password}` |
+| DELETE | `/me` | ✓ | Konto löschen `{password}` bzw. `{confirm: "LÖSCHEN"}` ohne Passwort |
+| DELETE | `/me/sso` | ✓ | Verbindung zum ICF-Konto trennen (nur mit Passwort) |
 | GET | `/checkins` | ✓ | Eigener Verlauf |
 | PUT | `/checkins/:weekId` | ✓ | `{scores, nextStepArea, nextStepText, sharedWithGroup}` |
 | DELETE | `/checkins/:weekId` | ✓ | Check-in einer Woche löschen |
-| POST | `/groups` | ✓ | Gruppe anlegen `{name}`, man wird Admin |
-| POST | `/groups/join` | ✓ | Beitreten `{code}` |
-| GET | `/group` | ✓ | Eigene Gruppe, Mitglieder, letzte geteilte Check-ins |
-| PATCH | `/group` | Admin | Umbenennen `{name}` |
-| POST | `/group/transfer` | Admin | Leitung abgeben `{userId}` |
-| POST | `/group/leave` | ✓ | Austreten `{successorId?}` |
-| DELETE | `/group/members/:userId` | Admin | Mitglied entfernen |
-| GET | `/group/messages?after=ID` | ✓ | Chat (letzte 200 bzw. neuere als ID) |
-| POST | `/group/messages` | ✓ | `{text}` |
+| GET | `/groups` | ✓ | Eigene Gruppen (Team-Gruppen zuerst) |
+| POST | `/groups` | ✓ | Eigene Gruppe anlegen `{name}`, man wird Leitung |
+| POST | `/groups/join` | ✓ | Eigener Gruppe beitreten `{code}` |
+| GET | `/groups/:id` | ✓ | Gruppe, Mitglieder, letzte geteilte Check-ins |
+| PATCH | `/groups/:id` | Leitung | Umbenennen `{name}` (nicht bei Team-Gruppen) |
+| POST | `/groups/:id/transfer` | Leitung | Leitung abgeben `{userId}` (nicht bei Team-Gruppen) |
+| POST | `/groups/:id/leave` | ✓ | Austreten `{successorId?}` (nicht bei Team-Gruppen) |
+| DELETE | `/groups/:id/members/:userId` | Leitung | Mitglied entfernen (nicht bei Team-Gruppen) |
+| GET | `/groups/:id/messages?after=ID` | ✓ | Chat (letzte 200 bzw. neuere als ID) |
+| POST | `/groups/:id/messages` | ✓ | `{text}` |
+
+## Anmeldung über Authentik und Team-Gruppen
+
+- Authorization Code Flow mit PKCE, `state` und `nonce`; Tokens sieht der Browser nie.
+  Der laufende Anmeldevorgang liegt im Speicher der API, im Cookie steht nur eine Zufallskennung.
+- Verknüpft wird nur über die Authentik-ID (`sub`), **nie über die E-Mail**. Gibt es die
+  E-Mail schon als Passwort-Konto, muss die Person sich mit Passwort anmelden und unter
+  Einstellungen → Konto „ICF-Konto verbinden“ wählen.
+- Authentik-Gruppen, die auf `-team` enden, werden Team-Gruppen; wer in `<team>-leitung`
+  ist, leitet sie. Abgleich bei jeder SSO-Anmeldung. Team-Gruppen sind in der App
+  schreibgeschützt (kein Code, kein Austreten, keine Verwaltung).
+- Eigene Gruppen funktionieren unabhängig davon für alle wie bisher.
 
 ## Sicherheit
 
@@ -62,6 +79,14 @@ npm run smoke
 
 Der Smoke-Test legt drei Testkonten an, prüft alle Endpunkte inkl. Rechtegrenzen
 und löscht die Konten am Ende wieder.
+
+## Datenbank-Migrationen
+
+`migrations/` enthält das Schema in Reihenfolge. Ausführen als Eigentümer, nicht als App-Rolle:
+
+```bash
+sudo -u postgres psql -d nextstep -v ON_ERROR_STOP=1 -f migrations/002_sso_und_mehrere_gruppen.sql
+```
 
 ## Noch nicht enthalten
 

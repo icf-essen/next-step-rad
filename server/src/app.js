@@ -9,6 +9,7 @@ import authRoutes from "./routes/auth.js";
 import meRoutes from "./routes/me.js";
 import checkinRoutes from "./routes/checkins.js";
 import groupRoutes from "./routes/groups.js";
+import oidcRoutes from "./routes/oidc.js";
 
 export async function buildApp(opts = {}) {
   const app = Fastify({
@@ -91,6 +92,7 @@ export async function buildApp(opts = {}) {
       await api.register(meRoutes);
       await api.register(checkinRoutes);
       await api.register(groupRoutes);
+      await api.register(oidcRoutes);
     },
     { prefix: config.apiPrefix }
   );

@@ -3,9 +3,9 @@ import { query } from "./db.js";
 import { SESSION_COOKIE } from "./errors.js";
 import { hashToken, newSessionToken } from "./security.js";
 
-export async function createSession(reply, userId) {
+export async function createSession(reply, userId, days = config.sessionDays) {
   const token = newSessionToken();
-  const maxAgeSeconds = config.sessionDays * 24 * 60 * 60;
+  const maxAgeSeconds = days * 24 * 60 * 60;
   await query(
     `INSERT INTO sessions (user_id, token_hash, expires_at)
      VALUES ($1, $2, now() + make_interval(secs => $3))`,

@@ -14,11 +14,15 @@ Restart=on-failure
 RestartSec=5
 
 # --- Härtung --------------------------------------------------------------
-# Der Dienst darf ausschließlich mit localhost sprechen (PostgreSQL, Caddy).
+# Der Dienst darf nur mit localhost (PostgreSQL, Caddy) und dem Front-Caddy
+# sprechen. Über den Front-Caddy erreicht er Authentik (auth.icf-essen.de) für
+# den SSO-Login. Damit dafür kein DNS nötig ist, steht in /etc/hosts:
+#   <IP des Front-Caddy>  auth.icf-essen.de
 # Selbst bei einer Kompromittierung der API sind von diesem Prozess aus keine
-# Verbindungen ins Netz oder ins Internet möglich.
+# weiteren Verbindungen ins Netz oder ins Internet möglich.
 IPAddressDeny=any
 IPAddressAllow=localhost
+IPAddressAllow=<IP des Front-Caddy>/32
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 
 # Dateisystem nur lesbar, kein Zugriff auf /home, eigenes /tmp
