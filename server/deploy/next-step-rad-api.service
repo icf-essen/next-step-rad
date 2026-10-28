@@ -23,6 +23,10 @@ RestartSec=5
 IPAddressDeny=any
 IPAddressAllow=localhost
 IPAddressAllow=<IP des Front-Caddy>/32
+# Mail-Relay (VM 106) über eine Ergänzungsdatei, damit die IP nicht hier steht:
+#   /etc/systemd/system/next-step-rad-api.service.d/mail.conf
+#   [Service]
+#   IPAddressAllow=<IP des Mail-Relays>/32
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 
 # Dateisystem nur lesbar, kein Zugriff auf /home, eigenes /tmp

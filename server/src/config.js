@@ -90,3 +90,40 @@ config.legal = {
   imprintUrl: httpsUrl("LEGAL_IMPRINT_URL"),
   privacyUrl: httpsUrl("LEGAL_PRIVACY_URL"),
 };
+
+// --- E-Mail-Versand (über das interne Mail-Relay) -------------------------
+// Ohne SMTP_HOST ist keine Registrierung möglich (Bestätigungsmail nötig).
+config.mail = process.env.SMTP_HOST
+  ? {
+      host: process.env.SMTP_HOST,
+      port: int("SMTP_PORT", 25),
+      // Zertifikat des Relays prüfen, falls es STARTTLS anbietet. Bei einem
+      // selbstsignierten Relay-Zertifikat auf "false" setzen.
+      tlsVerify: process.env.SMTP_TLS_VERIFY !== "false",
+      from: process.env.MAIL_FROM || "Next Step <noreply@icf-essen.de>",
+    }
+  : null;
+config.emailVerifyHours = int("EMAIL_VERIFY_HOURS", 48);
+
+// --- Break-Glass (lokale Admins) ------------------------------------------
+// Nur aus diesen Netzen dürfen lokale Admins die Verwaltung freischalten.
+config.adminLocalNetworks = (process.env.ADMIN_LOCAL_NETWORKS || "NETZ_1/PRAEFIX,NETZ_2/PRAEFIX")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+// Höchstdauer einer Break-Glass-Freischaltung (Stunden).
+config.breakGlassHours = int("BREAKGLASS_HOURS", 8);
+// Optional: Adresse, die bei jeder Break-Glass-Freischaltung eine Mail bekommt.
+config.breakGlassNotify = process.env.BREAKGLASS_NOTIFY_EMAIL || null;
+// Schlüssel zur Verschlüsselung der TOTP-Geheimnisse (32 Byte, base64).
+// Erzeugen mit: openssl rand -base64 32
+config.secretKey = (() => {
+  const raw = process.env.APP_SECRET_KEY;
+  if (!raw) return null;
+  const key = Buffer.from(raw, "base64");
+  if (key.length !== 32) {
+    console.error("APP_SECRET_KEY muss 32 Byte (base64) lang sein: openssl rand -base64 32");
+    process.exit(1);
+  }
+  return key;
+})();

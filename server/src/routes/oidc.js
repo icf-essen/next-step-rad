@@ -111,7 +111,8 @@ async function findOrCreateUser(client, claims) {
   if (taken.rowCount) throw new SsoError("email_taken");
 
   const { rows } = await client.query(
-    "INSERT INTO users (email, password_hash, display_name) VALUES ($1, NULL, $2) RETURNING id",
+    `INSERT INTO users (email, password_hash, display_name, email_verified_at)
+     VALUES ($1, NULL, $2, now()) RETURNING id`,
     [email, displayNameFrom(claims)]
   );
   await client.query("INSERT INTO user_identities (provider, subject, user_id) VALUES ($1, $2, $3)", [
@@ -142,6 +143,8 @@ async function linkIdentity(client, userId, claims) {
     claims.sub,
     userId,
   ]);
+  // Wer ein ICF-Konto verbindet, ist über Authentik bekannt.
+  await client.query("UPDATE users SET email_verified_at = coalesce(email_verified_at, now()) WHERE id = $1", [userId]);
 }
 
 export default async function oidcRoutes(app) {
@@ -257,7 +260,7 @@ export default async function oidcRoutes(app) {
           return id;
         });
         const isAdmin = !!config.oidc.adminGroup && groups.includes(config.oidc.adminGroup);
-        await createSession(reply, userId, config.oidc.sessionDays, { isAdmin });
+        await createSession(reply, userId, config.oidc.sessionDays, { adminVia: isAdmin ? "sso" : null });
         if (isAdmin) request.log.info({ userId }, "Admin-Sitzung über SSO angelegt");
         return reply.redirect(appUrl({ sso: "login" }));
       } catch (err) {

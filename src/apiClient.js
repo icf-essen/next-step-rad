@@ -5,9 +5,10 @@
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "") + "/api";
 
 export class ApiError extends Error {
-  constructor(status, message) {
+  constructor(status, message, code) {
     super(message);
     this.status = status;
+    this.code = code; // z. B. "email_unverified"
   }
 }
 
@@ -42,7 +43,7 @@ async function request(method, path, body, { allow401 = false } = {}) {
     const message =
       (data && data.error) ||
       (res.status >= 500 ? "Der Server hat ein Problem. Bitte später erneut versuchen." : "Anfrage fehlgeschlagen.");
-    throw new ApiError(res.status, message);
+    throw new ApiError(res.status, message, data && data.code);
   }
   return data;
 }
@@ -135,3 +136,18 @@ export const createResetLink = (userId) =>
   request("POST", "/admin/users/" + encodeURIComponent(userId) + "/password-reset", {});
 export const resetPassword = (token, newPassword) =>
   request("POST", "/auth/password-reset", { token, newPassword }, { allow401: true });
+
+/* ------------------- Bestätigung, Passwort vergessen -------------------- */
+
+export const verifyEmail = (token) => request("POST", "/auth/verify-email", { token }, { allow401: true });
+export const resendVerification = (email, password) =>
+  request("POST", "/auth/resend-verification", { email, password }, { allow401: true });
+export const forgotPassword = (email) => request("POST", "/auth/forgot-password", { email }, { allow401: true });
+
+/* ------------------------------ Break-Glass ------------------------------ */
+
+export const totpSetup = (password) => request("POST", "/me/totp/setup", { password });
+export const totpConfirm = (code) => request("POST", "/me/totp/confirm", { code });
+export const elevate = (code) => request("POST", "/auth/elevate", { code });
+/** Admin: { localAdmin?: boolean, emailVerified?: true } */
+export const updateUser = (userId, patch) => request("PATCH", "/admin/users/" + encodeURIComponent(userId), patch);

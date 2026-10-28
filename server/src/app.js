@@ -11,6 +11,7 @@ import checkinRoutes from "./routes/checkins.js";
 import groupRoutes from "./routes/groups.js";
 import oidcRoutes from "./routes/oidc.js";
 import adminRoutes from "./routes/admin.js";
+import breakGlassRoutes from "./routes/breakglass.js";
 
 export async function buildApp(opts = {}) {
   const app = Fastify({
@@ -73,7 +74,10 @@ export async function buildApp(opts = {}) {
       return reply.code(400).send({ error: "Ungültige Eingabe.", details: err.message });
     }
     if (err.statusCode === 429) return reply.code(429).send(err);
-    if (err.expose || (err.statusCode && err.statusCode < 500)) {
+    if (err.expose) {
+      return reply.code(err.statusCode).send(err.code ? { error: err.message, code: err.code } : { error: err.message });
+    }
+    if (err.statusCode && err.statusCode < 500) {
       return reply.code(err.statusCode).send({ error: err.message });
     }
     // Verletzte Datenbank-Constraints als Client-Fehler melden, ohne Interna preiszugeben.
@@ -101,6 +105,7 @@ export async function buildApp(opts = {}) {
       await api.register(groupRoutes);
       await api.register(oidcRoutes);
       await api.register(adminRoutes);
+      await api.register(breakGlassRoutes);
     },
     { prefix: config.apiPrefix }
   );

@@ -23,6 +23,8 @@ import { GroupsView } from "./components/GroupsView.jsx";
 import { AuthView } from "./components/AuthView.jsx";
 import { AdminView } from "./components/AdminView.jsx";
 import { ResetPasswordView } from "./components/ResetPasswordView.jsx";
+import { VerifyEmailView } from "./components/VerifyEmailView.jsx";
+import { BreakGlassView } from "./components/BreakGlassView.jsx";
 import { LegalLinks } from "./components/LegalLinks.jsx";
 
 const GROUP_POLL_MS = 8000;
@@ -34,11 +36,13 @@ function defaultColors() {
   return colors;
 }
 
-/** Token aus einem Link zum Zurücksetzen des Passworts (#reset=…) auslesen. */
-function readResetToken() {
-  const m = window.location.hash.match(/^#reset=([A-Za-z0-9_-]{20,100})$/);
+/** Token aus einem Einmal-Link (#reset=… bzw. #verify=…) auslesen. */
+function readHashToken(kind) {
+  const m = window.location.hash.match(new RegExp("^#" + kind + "=([A-Za-z0-9_-]{20,100})$"));
   return m ? m[1] : null;
 }
+const readResetToken = () => readHashToken("reset");
+const readVerifyToken = () => readHashToken("verify");
 
 function clearHash() {
   window.history.replaceState(null, "", window.location.pathname + window.location.search);
@@ -61,6 +65,8 @@ export default function NextStepRad() {
   const [authChecked, setAuthChecked] = useState(false);
   const [authOptions, setAuthOptions] = useState({ sso: false, ssoLabel: null, legal: null });
   const [resetToken, setResetToken] = useState(readResetToken);
+  const [verifyToken, setVerifyToken] = useState(readVerifyToken);
+  const [authNotice, setAuthNotice] = useState("");
   const [ssoError, setSsoError] = useState("");
   const [me, setMe] = useState(null);
   const [entriesLoaded, setEntriesLoaded] = useState(false);
@@ -95,7 +101,10 @@ export default function NextStepRad() {
 
   // Reset-Link in einem bereits offenen Tab: Nur das Fragment ändert sich, kein Neuladen.
   useEffect(() => {
-    const onHash = () => setResetToken(readResetToken());
+    const onHash = () => {
+      setResetToken(readResetToken());
+      setVerifyToken(readVerifyToken());
+    };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
@@ -241,6 +250,7 @@ export default function NextStepRad() {
   /* --- Konto --- */
   function handleAuthenticated(data) {
     applyMe(data);
+    setAuthNotice("");
     setLoadError("");
     setSsoError("");
     setView("home");
@@ -448,6 +458,25 @@ export default function NextStepRad() {
     }, "Nachricht konnte nicht gesendet werden.");
 
   /* --- Darstellung --- */
+  if (verifyToken) {
+    return (
+      <VerifyEmailView
+        token={verifyToken}
+        onVerified={(data) => {
+          clearHash();
+          setVerifyToken(null);
+          handleAuthenticated(data);
+          setAuthChecked(true);
+          setToast("Danke! Deine E-Mail-Adresse ist bestätigt.");
+        }}
+        onCancel={() => {
+          clearHash();
+          setVerifyToken(null);
+        }}
+      />
+    );
+  }
+
   if (resetToken) {
     return (
       <>
@@ -458,7 +487,7 @@ export default function NextStepRad() {
             clearHash();
             setResetToken(null);
             signOutLocally();
-            setToast("Dein neues Passwort ist gespeichert. Melde dich jetzt damit an.");
+            setAuthNotice("Dein neues Passwort ist gespeichert. Melde dich jetzt damit an.");
           }}
           onCancel={() => {
             clearHash();
@@ -487,7 +516,13 @@ export default function NextStepRad() {
             <span>{loadError}</span>
           </div>
         )}
-        <AuthView options={authOptions} ssoError={ssoError} onAuthenticated={handleAuthenticated} />
+        <AuthView
+          key={authNotice}
+          options={authOptions}
+          ssoError={ssoError}
+          notice={authNotice}
+          onAuthenticated={handleAuthenticated}
+        />
         {toast && <div className="nsr-toast">{toast}</div>}
       </>
     );
@@ -517,7 +552,7 @@ export default function NextStepRad() {
               { key: "history", label: "Historie", icon: HistoryIcon },
               { key: "groups", label: "Gruppen", icon: Users },
               { key: "settings", label: "Einstellungen", icon: SettingsIcon },
-              ...(me.isAdmin ? [{ key: "admin", label: "Verwaltung", icon: ShieldCheck }] : []),
+              ...(me.isAdmin || me.localAdmin ? [{ key: "admin", label: "Verwaltung", icon: ShieldCheck }] : []),
             ].map((item) => {
               const Icon = item.icon;
               return (
@@ -600,6 +635,15 @@ export default function NextStepRad() {
         )}
 
         {view === "admin" && me.isAdmin && <AdminView />}
+        {view === "admin" && !me.isAdmin && me.localAdmin && (
+          <BreakGlassView
+            me={me}
+            onMeChanged={(data) => {
+              applyMe(data);
+              if (data.isAdmin) setToast("Verwaltung freigeschaltet.");
+            }}
+          />
+        )}
 
         {view === "groups" && (
           <GroupsView

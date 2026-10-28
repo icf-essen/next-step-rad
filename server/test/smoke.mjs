@@ -6,6 +6,25 @@
 //                                            # (sperrt die eigene IP danach 5 Minuten für Logins!)
 //
 // Legt drei Testkonten an und löscht sie am Ende wieder.
+//
+// Die E-Mail-Bestätigung erledigt der Test direkt in der Datenbank (psql), damit
+// er keine Mails lesen muss. Standard: "sudo -u postgres psql -d nextstep".
+// Anders: SMOKE_PSQL="psql -h /tmp/pgsock -U postgres -d nextstep" node test/smoke.mjs
+// Die Testadressen enden auf .invalid – das Mail-Relay kann sie nicht zustellen.
+
+import { execFileSync } from "node:child_process";
+
+const PSQL = (process.env.SMOKE_PSQL || "sudo -u postgres psql -d nextstep").split(" ");
+const DOMAIN = "nextstep-smoke.invalid";
+
+function markVerified(email) {
+  if (!/^[a-z0-9.-]+@[a-z0-9.-]+$/.test(email)) throw new Error("unerwartete Testadresse");
+  execFileSync(PSQL[0], [
+    ...PSQL.slice(1),
+    "-qtAc",
+    `UPDATE users SET email_verified_at = now() WHERE lower(email) = lower('${email}')`,
+  ]);
+}
 
 const BASE = process.env.BASE || "http://127.0.0.1:3000/next-step-rad/api";
 const ORIGIN = process.env.ORIGIN || "https://nextstep.icf-essen.de";
@@ -69,20 +88,37 @@ async function main() {
   check("/me ohne Login -> 401", (await A.req("GET", "/me")).status === 401);
 
   console.log("\nKonto");
-  let r = await A.req("POST", "/auth/register", { email: `a-${suffix}@test.local`, password: pw, displayName: "Anna" });
-  check("Registrierung A -> 201", r.status === 201, r);
+  let r = await A.req("POST", "/auth/register", { email: `a-${suffix}@${DOMAIN}`, password: pw, displayName: "Anna" });
+  check("Registrierung A -> 201, wartet auf Bestätigung", r.status === 201 && r.data?.pendingVerification === true, r);
+  check("Registrierung meldet nicht automatisch an", !A.cookie);
+  r = await A.req("POST", "/auth/login", { email: `a-${suffix}@${DOMAIN}`, password: pw });
+  check("Login vor Bestätigung -> 403 email_unverified", r.status === 403 && r.data?.code === "email_unverified", r);
+  r = await new Client("x").req("POST", "/auth/login", { email: `a-${suffix}@${DOMAIN}`, password: "falsch-falsch" });
+  check("Unbestätigt + falsches Passwort -> 401 (verrät nichts)", r.status === 401 && !r.data?.code, r);
+  r = await new Client("x").req("POST", "/auth/register", { email: `A-${suffix}@${DOMAIN}`, password: pw + "x" });
+  check("Doppelte E-Mail -> gleiche Antwort wie neu (kein Hinweis auf Konto)", r.status === 201 && r.data?.pendingVerification === true, r);
+  markVerified(`a-${suffix}@${DOMAIN}`);
+  r = await new Client("x").req("POST", "/auth/login", { email: `a-${suffix}@${DOMAIN}`, password: pw + "x" });
+  check("Doppelte Registrierung hat das Passwort nicht überschrieben", r.status === 401, r);
+  r = await A.req("POST", "/auth/login", { email: `a-${suffix}@${DOMAIN}`, password: pw });
+  check("Nach Bestätigung: Login klappt", r.status === 200 && !!A.cookie, r);
   check("Neues Konto hat keine Gruppen, Passwort, kein SSO", Array.isArray(r.data?.groups) && r.data.groups.length === 0 && r.data.hasPassword === true && r.data.ssoLinked === false);
+  check("Normales Konto ist weder Admin noch lokaler Admin", r.data?.isAdmin === false && r.data?.localAdmin === null, r.data);
   const aId = r.data?.id;
-  r = await new Client("x").req("POST", "/auth/register", { email: `A-${suffix}@TEST.local`, password: pw });
-  check("Doppelte E-Mail (andere Schreibweise) -> 409", r.status === 409, r);
-  r = await new Client("x").req("POST", "/auth/register", { email: `kurz-${suffix}@test.local`, password: "zukurz" });
+  r = await new Client("x").req("POST", "/auth/forgot-password", { email: `gibtsnicht-${suffix}@${DOMAIN}` });
+  check("Passwort vergessen (unbekannt) -> 202", r.status === 202, r);
+  r = await new Client("x").req("POST", "/auth/forgot-password", { email: `a-${suffix}@${DOMAIN}` });
+  check("Passwort vergessen (bekannt) -> gleiche Antwort", r.status === 202, r);
+  r = await new Client("x").req("POST", "/auth/verify-email", { token: "x".repeat(43) });
+  check("Ungültiger Bestätigungslink -> 400", r.status === 400, r);
+  r = await new Client("x").req("POST", "/auth/register", { email: `kurz-${suffix}@${DOMAIN}`, password: "zukurz" });
   check("Zu kurzes Passwort -> 400", r.status === 400, r);
-  r = await new Client("x").req("POST", "/auth/login", { email: `a-${suffix}@test.local`, password: "falsch-falsch" });
+  r = await new Client("x").req("POST", "/auth/login", { email: `a-${suffix}@${DOMAIN}`, password: "falsch-falsch" });
   check("Login mit falschem Passwort -> 401", r.status === 401, r);
-  r = await new Client("x").req("POST", "/auth/login", { email: `gibtsnicht-${suffix}@test.local`, password: "egal-egal-egal" });
+  r = await new Client("x").req("POST", "/auth/login", { email: `gibtsnicht-${suffix}@${DOMAIN}`, password: "egal-egal-egal" });
   check("Login mit unbekannter E-Mail -> gleiche Meldung", r.status === 401 && r.data?.error === "E-Mail oder Passwort ist falsch.", r);
   const A2 = new Client("A2");
-  r = await A2.req("POST", "/auth/login", { email: `a-${suffix}@test.local`, password: pw });
+  r = await A2.req("POST", "/auth/login", { email: `a-${suffix}@${DOMAIN}`, password: pw });
   check("Login korrekt -> 200 + Cookie", r.status === 200 && !!A2.cookie, r);
   r = await A.req("PATCH", "/me", { displayName: "Anna B." });
   check("Anzeigename ändern", r.data?.displayName === "Anna B.", r);
@@ -123,9 +159,13 @@ async function main() {
   r = await A.req("GET", "/me");
   check("/me listet beide Gruppen", r.data?.groups?.length === 2 && r.data.groups.every((g) => g.managed === false), r.data);
 
-  r = await B.req("POST", "/auth/register", { email: `b-${suffix}@test.local`, password: pw, displayName: "Ben" });
+  await B.req("POST", "/auth/register", { email: `b-${suffix}@${DOMAIN}`, password: pw, displayName: "Ben" });
+  markVerified(`b-${suffix}@${DOMAIN}`);
+  r = await B.req("POST", "/auth/login", { email: `b-${suffix}@${DOMAIN}`, password: pw });
   const bId = r.data?.id;
-  await C.req("POST", "/auth/register", { email: `c-${suffix}@test.local`, password: pw, displayName: "Cara" });
+  await C.req("POST", "/auth/register", { email: `c-${suffix}@${DOMAIN}`, password: pw, displayName: "Cara" });
+  markVerified(`c-${suffix}@${DOMAIN}`);
+  await C.req("POST", "/auth/login", { email: `c-${suffix}@${DOMAIN}`, password: pw });
 
   r = await B.req("POST", "/groups/join", { code: "ZZZZZZ" });
   check("Falscher Code -> 404", r.status === 404, r);
@@ -138,7 +178,7 @@ async function main() {
   check("B sieht 2 Mitglieder", r.data?.members?.length === 2, r);
   const annaInB = r.data?.members?.find((m) => m.userId === aId);
   check("B sieht A's letzten geteilten Check-in mit Scores", annaInB?.latestCheckin?.weekId === "2026-W42" && annaInB?.latestCheckin?.scores?.arbeit === 9, annaInB);
-  check("Keine E-Mail-Adressen in der Mitgliederliste", !JSON.stringify(r.data).includes("@test.local"));
+  check("Keine E-Mail-Adressen in der Mitgliederliste", !JSON.stringify(r.data).includes(DOMAIN));
   r = await B.req("PUT", `/groups/${gid}/participation`, { active: false });
   check("Eigene Gruppe lässt sich nicht abwählen (nur verlassen) -> 400", r.status === 400, r);
   r = await C.req("PUT", `/groups/${gid}/participation`, { active: false });
@@ -193,6 +233,16 @@ async function main() {
   r = await A.req("POST", `/groups/${gid2}/leave`, {});
   check("Letzte Person verlässt Gruppe -> Gruppe gelöscht", r.status === 204 && (await A.req("POST", `/groups/${gid2}/leave`, {})).status === 404);
 
+  console.log("\nVerwaltung und Break-Glass (ohne Admin)");
+  r = await A.req("GET", "/admin/users?q=test");
+  check("Normales Konto: Verwaltung -> 403", r.status === 403, r);
+  r = await A.req("PATCH", `/admin/users/${aId}`, { localAdmin: true });
+  check("Normales Konto kann sich nicht zum lokalen Admin machen -> 403", r.status === 403, r);
+  r = await A.req("POST", "/auth/elevate", { code: "123456" });
+  check("Normales Konto: Break-Glass -> 403", r.status === 403, r);
+  r = await A.req("POST", "/me/totp/setup", { password: pw });
+  check("Normales Konto: TOTP einrichten -> 403", r.status === 403, r);
+
   console.log("\nSchutzmechanismen");
   r = await A.req("POST", "/group/messages", { text: "CSRF" }, { Origin: "https://boese.example" });
   check("Fremde Origin -> 403", r.status === 403, r);
@@ -214,7 +264,7 @@ async function main() {
     console.log("\nRate-Limit (Login)");
     let last;
     for (let i = 0; i < 12; i++) {
-      last = await new Client("x").req("POST", "/auth/login", { email: `a-${suffix}@test.local`, password: "falsch-falsch" });
+      last = await new Client("x").req("POST", "/auth/login", { email: `a-${suffix}@${DOMAIN}`, password: "falsch-falsch" });
     }
     check("Nach 10 Fehlversuchen -> 429", last.status === 429, last);
   }

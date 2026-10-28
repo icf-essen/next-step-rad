@@ -45,6 +45,33 @@ Browser ──HTTPS──► Caddy
 | GET | `/admin/users?q=…` | Admin | Konten nach E-Mail/Name suchen (max. 25) |
 | POST | `/admin/users/:id/password-reset` | Admin | Einmal-Link zum Zurücksetzen erzeugen |
 | POST | `/auth/password-reset` | – | Neues Passwort mit Link-Token setzen `{token, newPassword}` |
+| PATCH | `/admin/users/:id` | Admin | `{localAdmin?: bool, emailVerified?: true}` |
+| POST | `/auth/verify-email` | – | Bestätigungslink einlösen `{token}`, meldet an |
+| POST | `/auth/resend-verification` | – | Neuen Bestätigungslink `{email, password}` |
+| POST | `/auth/forgot-password` | – | Reset-Link per Mail `{email}` (Antwort immer 202) |
+| POST | `/me/totp/setup` | lokaler Admin | `{password}` → Geheimnis + otpauth-URL |
+| POST | `/me/totp/confirm` | lokaler Admin | `{code}` aktiviert TOTP |
+| POST | `/auth/elevate` | lokaler Admin | `{code}` schaltet Verwaltung frei (nur intern) |
+
+## E-Mail-Bestätigung und Passwort vergessen
+
+- Registrierung legt das Konto unbestätigt an und schickt einen Link (48 h). Anmelden
+  geht erst nach der Bestätigung; der Link meldet direkt an.
+- Ist die Adresse schon vergeben, gibt es dieselbe Antwort wie bei einer neuen Adresse;
+  die Inhaberin bekommt stattdessen eine Mail mit Link zum Neu-Festlegen des Passworts.
+  So verrät die Registrierung nicht, wer ein Konto hat, und niemand kann eine fremde
+  Adresse "besetzen".
+- "Passwort vergessen" schickt einen Reset-Link (24 h), höchstens alle 2 Minuten pro Konto.
+- Mailversand im Hintergrund über das interne Relay (`SMTP_HOST`), nodemailer ohne Datei-/URL-Zugriff.
+
+## Break-Glass (lokale Admins)
+
+- Ein Admin kann Passwort-Konten zu lokalen Admins machen (und wieder entziehen).
+- Freischalten der Verwaltung nur: aus `ADMIN_LOCAL_NETWORKS`, mit TOTP-Code (RFC 6238),
+  für die aktuelle Sitzung und höchstens `BREAKGLASS_HOURS`. Jeder Code nur einmal.
+- TOTP-Geheimnis AES-256-GCM-verschlüsselt (`APP_SECRET_KEY`); Einrichtung nur mit Passwort.
+- Jede Freischaltung wird geloggt (Level warn) und optional per Mail gemeldet.
+- Entziehen beendet laufende Freischaltungen sofort.
 
 ## Verwaltung und Passwort zurücksetzen
 
@@ -94,18 +121,18 @@ DATABASE_URL=postgresql://nextstep_app@127.0.0.1/nextstep PGPASSWORD=… \
 npm run smoke
 ```
 
-Der Smoke-Test legt drei Testkonten an, prüft alle Endpunkte inkl. Rechtegrenzen
-und löscht die Konten am Ende wieder.
+Der Smoke-Test legt drei Testkonten an (Domain `nextstep-smoke.invalid`), bestätigt
+sie per `psql` (`SMOKE_PSQL`, Standard `sudo -u postgres psql -d nextstep`), prüft
+alle Endpunkte inkl. Rechtegrenzen und löscht die Konten am Ende wieder.
 
 ## Datenbank-Migrationen
 
 `migrations/` enthält das Schema in Reihenfolge. Ausführen als Eigentümer, nicht als App-Rolle:
 
 ```bash
-sudo -u postgres psql -d nextstep -v ON_ERROR_STOP=1 -f migrations/004_team_gruppen_abwaehlen.sql
+sudo -u postgres psql -d nextstep -v ON_ERROR_STOP=1 -f migrations/005_email_bestaetigung_und_break_glass.sql
 ```
 
 ## Noch nicht enthalten
 
-- Versand von Reset-Links per E-Mail (benötigt Freigabe DMZ → Mail-Relay).
 - Übernahme von Daten aus Firebase.

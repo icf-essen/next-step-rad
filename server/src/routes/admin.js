@@ -1,7 +1,8 @@
 import { config } from "../config.js";
 import { query, withTransaction } from "../db.js";
 import { HttpError } from "../errors.js";
-import { hashPassword, hashToken, newSessionToken } from "../security.js";
+import { hashPassword, hashToken } from "../security.js";
+import { createResetLink } from "../tokens.js";
 import { PASSWORD, UUID } from "../schemas.js";
 
 // Verwaltung und Passwort zurücksetzen.
@@ -40,6 +41,8 @@ export default async function adminRoutes(app) {
       const { rows } = await query(
         `SELECT u.id, u.email, u.display_name, u.created_at,
                 u.password_hash IS NOT NULL AS has_password,
+                u.email_verified_at IS NOT NULL AS email_verified,
+                u.is_local_admin, u.totp_enabled_at IS NOT NULL AS totp_enabled,
                 EXISTS (SELECT 1 FROM user_identities i WHERE i.user_id = u.id) AS sso_linked
            FROM users u
           WHERE u.email ILIKE $1 ESCAPE '\\' OR u.display_name ILIKE $1 ESCAPE '\\'
@@ -54,6 +57,10 @@ export default async function adminRoutes(app) {
         createdAt: r.created_at,
         hasPassword: r.has_password,
         ssoLinked: r.sso_linked,
+        emailVerified: r.email_verified,
+        localAdmin: r.is_local_admin,
+        totpEnabled: r.totp_enabled,
+        isMe: r.id === request.user.id,
       }));
     }
   );
@@ -75,24 +82,65 @@ export default async function adminRoutes(app) {
       if (!rows[0].has_password) {
         throw new HttpError(400, "Dieses Konto meldet sich nur über das ICF-Konto an und hat kein Passwort.");
       }
-      const token = newSessionToken();
-      const hours = config.passwordResetHours;
-      const result = await withTransaction(async (client) => {
-        // Ein neuer Link macht ältere Links für dieses Konto ungültig.
-        await client.query("DELETE FROM password_resets WHERE user_id = $1", [userId]);
-        const ins = await client.query(
-          `INSERT INTO password_resets (token_hash, user_id, created_by, expires_at)
-           VALUES ($1, $2, $3, now() + make_interval(hours => $4)) RETURNING expires_at`,
-          [hashToken(token), userId, request.user.id, hours]
-        );
-        return ins.rows[0];
-      });
+      const result = await createResetLink({ query }, userId, request.user.id, config.passwordResetHours);
       request.log.info({ adminId: request.user.id, userId }, "Passwort-Reset-Link erzeugt");
       return reply.code(201).send({
-        url: `${config.publicUrl}${config.cookiePath}#reset=${token}`,
-        expiresAt: result.expires_at,
+        url: result.url,
+        expiresAt: result.expiresAt,
         email: rows[0].email,
       });
+    }
+  );
+
+  // Konto ändern: lokalen Admin (Break-Glass) setzen/entziehen, E-Mail als bestätigt markieren.
+  app.patch(
+    "/admin/users/:userId",
+    {
+      ...admin,
+      config: { rateLimit: { max: 30, timeWindow: "1 hour" } },
+      schema: {
+        params: { type: "object", required: ["userId"], properties: { userId: UUID } },
+        body: {
+          type: "object",
+          minProperties: 1,
+          additionalProperties: false,
+          properties: { localAdmin: { type: "boolean" }, emailVerified: { const: true } },
+        },
+      },
+    },
+    async (request) => {
+      const { userId } = request.params;
+      const { localAdmin, emailVerified } = request.body;
+      await withTransaction(async (client) => {
+        const { rows } = await client.query(
+          "SELECT password_hash IS NOT NULL AS has_password FROM users WHERE id = $1 FOR UPDATE",
+          [userId]
+        );
+        if (!rows[0]) throw new HttpError(404, "Konto nicht gefunden.");
+        if (localAdmin === true && !rows[0].has_password) {
+          throw new HttpError(400, "Lokale Admins brauchen ein Passwort-Konto (für den Fall, dass Authentik ausfällt).");
+        }
+        if (localAdmin !== undefined) {
+          await client.query("UPDATE users SET is_local_admin = $2 WHERE id = $1", [userId, localAdmin]);
+          if (!localAdmin) {
+            // Laufende Break-Glass-Freischaltungen sofort beenden.
+            await client.query(
+              "UPDATE sessions SET is_admin = false, admin_via = NULL WHERE user_id = $1 AND admin_via = 'local'",
+              [userId]
+            );
+          }
+        }
+        if (emailVerified) {
+          await client.query("UPDATE users SET email_verified_at = coalesce(email_verified_at, now()) WHERE id = $1", [userId]);
+          await client.query("DELETE FROM email_verifications WHERE user_id = $1", [userId]);
+        }
+      });
+      request.log.warn({ adminId: request.user.id, userId, localAdmin, emailVerified }, "Konto durch Admin geändert");
+      const { rows } = await query(
+        `SELECT id, email, is_local_admin, email_verified_at IS NOT NULL AS email_verified FROM users WHERE id = $1`,
+        [userId]
+      );
+      return { id: rows[0].id, localAdmin: rows[0].is_local_admin, emailVerified: rows[0].email_verified };
     }
   );
 
@@ -120,7 +168,11 @@ export default async function adminRoutes(app) {
         );
         if (!rows[0]) throw new HttpError(400, "Dieser Link ist ungültig, abgelaufen oder wurde schon benutzt.");
         const id = rows[0].user_id;
-        await client.query("UPDATE users SET password_hash = $2 WHERE id = $1", [id, newHash]);
+        // Wer den Link aus der Mail benutzt, hat Zugriff auf das Postfach: gilt als bestätigt.
+        await client.query(
+          "UPDATE users SET password_hash = $2, email_verified_at = coalesce(email_verified_at, now()) WHERE id = $1",
+          [id, newHash]
+        );
         // Alle bestehenden Sitzungen beenden (z. B. falls jemand anderes eingeloggt war).
         await client.query("DELETE FROM sessions WHERE user_id = $1", [id]);
         await client.query("DELETE FROM password_resets WHERE user_id = $1", [id]);

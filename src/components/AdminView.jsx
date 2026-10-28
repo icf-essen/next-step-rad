@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import { Search, Link2, Copy, Check } from "lucide-react";
-import { searchUsers, createResetLink } from "../apiClient.js";
+import { Search, Link2, Copy, Check, ShieldCheck, MailCheck } from "lucide-react";
+import { searchUsers, createResetLink, updateUser } from "../apiClient.js";
 
 /** Verwaltung: Konten suchen und Links zum Zurücksetzen des Passworts erzeugen. */
 export function AdminView() {
@@ -30,6 +30,17 @@ export function AdminView() {
     try {
       const link = await createResetLink(user.id);
       setLinks((prev) => ({ ...prev, [user.id]: link }));
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function patchUser(user, patch, question) {
+    if (question && !window.confirm(question)) return;
+    setError("");
+    try {
+      const updated = await updateUser(user.id, patch);
+      setResults((prev) => prev.map((u) => (u.id === user.id ? { ...u, ...updated } : u)));
     } catch (err) {
       setError(err.message);
     }
@@ -85,12 +96,41 @@ export function AdminView() {
                 <div className="nsr-group-item-meta" style={{ marginBottom: 10 }}>
                   {u.hasPassword && <span className="nsr-team-badge">Passwort</span>}
                   {u.ssoLinked && <span className="nsr-team-badge">ICF-Konto</span>}
+                  {!u.emailVerified && <span className="nsr-optout-badge">nicht bestätigt</span>}
+                  {u.localAdmin && <span className="nsr-admin-badge">Lokaler Admin</span>}
+                  {u.localAdmin && <span className="nsr-team-badge">{u.totpEnabled ? "TOTP aktiv" : "TOTP fehlt"}</span>}
                   <span>seit {new Date(u.createdAt).toLocaleDateString("de-DE")}</span>
                 </div>
                 {u.hasPassword ? (
-                  <button className="nsr-btn nsr-btn-secondary" onClick={() => handleReset(u)}>
-                    <Link2 size={16} /> Link zum Zurücksetzen
-                  </button>
+                  <div className="nsr-btn-row nsr-admin-actions">
+                    <button className="nsr-btn nsr-btn-secondary" onClick={() => handleReset(u)}>
+                      <Link2 size={16} /> Link zum Zurücksetzen
+                    </button>
+                    {!u.emailVerified && (
+                      <button
+                        className="nsr-btn nsr-btn-ghost"
+                        onClick={() =>
+                          patchUser(u, { emailVerified: true }, `E-Mail-Adresse von ${u.email} als bestätigt markieren?`)
+                        }
+                      >
+                        <MailCheck size={16} /> E-Mail bestätigen
+                      </button>
+                    )}
+                    <button
+                      className={"nsr-btn " + (u.localAdmin ? "nsr-btn-danger" : "nsr-btn-ghost")}
+                      onClick={() =>
+                        patchUser(
+                          u,
+                          { localAdmin: !u.localAdmin },
+                          u.localAdmin
+                            ? `${u.email} die Rolle „lokaler Admin“ entziehen? Laufende Freischaltungen enden sofort.`
+                            : `${u.email} zum lokalen Admin (Break-Glass) machen? Die Person kann dann ohne Authentik – aus dem internen Netz und mit Authenticator-Code – die Verwaltung öffnen.`
+                        )
+                      }
+                    >
+                      <ShieldCheck size={16} /> {u.localAdmin ? "Lokalen Admin entziehen" : "Zum lokalen Admin machen"}
+                    </button>
+                  </div>
                 ) : (
                   <p className="nsr-hint" style={{ margin: 0 }}>
                     Kein Passwort – meldet sich über das ICF-Konto an.
