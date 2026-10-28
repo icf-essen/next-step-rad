@@ -6,10 +6,20 @@ import { VitePWA } from "vite-plugin-pwa";
 // https://github.com/VivianSVZ/next-step-rad -> base: "/next-step-rad/"
 export default defineConfig({
   base: "/next-step-rad/",
+  // Lokale Entwicklung: API-Aufrufe an die lokal laufende API weiterreichen.
+  server: {
+    proxy: {
+      "/next-step-rad/api": { target: "http://127.0.0.1:3000", changeOrigin: false },
+    },
+  },
   plugins: [
     react(),
     VitePWA({
       registerType: "autoUpdate",
+      workbox: {
+        // Die API darf nie vom Service Worker beantwortet werden (kein index.html-Fallback, kein Cache).
+        navigateFallbackDenylist: [/\/api\//],
+      },
       includeAssets: ["favicon.png", "apple-touch-icon.png"],
       manifest: {
         name: "Next Step Rad",

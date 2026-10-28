@@ -371,3 +371,33 @@ input[type=range] { width: 100%; }
 @media (prefers-reduced-motion: reduce) {
   .nsr-sheet, .nsr-drawer { animation: none; }
 }
+
+/* ------------------------- Anmeldung & Konto ------------------------- */
+.nsr-auth-brand { flex: 1; text-align: center; }
+.nsr-auth .nsr-verse { margin-bottom: 22px; }
+.nsr-auth-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 12px;
+  background: var(--nsr-track);
+  border-radius: 12px;
+}
+.nsr-auth-tab {
+  flex: 1;
+  font: 600 14px 'Inter', sans-serif;
+  color: var(--nsr-ink-muted);
+  background: transparent;
+  border: none;
+  border-radius: 9px;
+  padding: 9px 10px;
+  cursor: pointer;
+}
+.nsr-auth-tab-active { background: var(--nsr-surface); color: var(--nsr-ink); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06); }
+.nsr-auth-form { display: flex; flex-direction: column; gap: 14px; }
+.nsr-auth-form .nsr-btn-wide { margin-top: 4px; }
+.nsr-field { display: flex; flex-direction: column; gap: 6px; }
+.nsr-field > span,
+.nsr-field > label { font-size: 13.5px; font-weight: 600; }
+.nsr-field small.nsr-hint { margin: 0; font-size: 12.5px; }
+.nsr-field-row .nsr-input { flex: 1; min-width: 0; }
