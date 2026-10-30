@@ -14,19 +14,20 @@ Restart=on-failure
 RestartSec=5
 
 # --- Härtung --------------------------------------------------------------
-# Der Dienst darf nur mit localhost (PostgreSQL, Caddy) und dem Front-Caddy
-# sprechen. Über den Front-Caddy erreicht er Authentik (auth.icf-essen.de) für
-# den SSO-Login. Damit dafür kein DNS nötig ist, steht in /etc/hosts:
+# Der Dienst darf nur mit localhost (PostgreSQL, Caddy) sprechen. Weitere Ziele
+# (Front-Caddy für den SSO-Login über auth.icf-essen.de, Mail-Relay) werden
+# über eine Ergänzungsdatei freigegeben, damit keine internen Adressen im Repo
+# stehen:
+#   /etc/systemd/system/next-step-rad-api.service.d/netz.conf
+#   [Service]
+#   IPAddressAllow=<IP des Front-Caddy>/32
+#   IPAddressAllow=<IP des Mail-Relays>/32
+# Damit für den SSO-Login kein DNS nötig ist, steht in /etc/hosts:
 #   <IP des Front-Caddy>  auth.icf-essen.de
 # Selbst bei einer Kompromittierung der API sind von diesem Prozess aus keine
 # weiteren Verbindungen ins Netz oder ins Internet möglich.
 IPAddressDeny=any
 IPAddressAllow=localhost
-IPAddressAllow=<IP des Front-Caddy>/32
-# Mail-Relay (VM 106) über eine Ergänzungsdatei, damit die IP nicht hier steht:
-#   /etc/systemd/system/next-step-rad-api.service.d/mail.conf
-#   [Service]
-#   IPAddressAllow=<IP des Mail-Relays>/32
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 
 # Dateisystem nur lesbar, kein Zugriff auf /home, eigenes /tmp

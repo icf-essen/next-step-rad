@@ -107,7 +107,8 @@ config.emailVerifyHours = int("EMAIL_VERIFY_HOURS", 48);
 
 // --- Break-Glass (lokale Admins) ------------------------------------------
 // Nur aus diesen Netzen dürfen lokale Admins die Verwaltung freischalten.
-config.adminLocalNetworks = (process.env.ADMIN_LOCAL_NETWORKS || "NETZ_1/PRAEFIX,NETZ_2/PRAEFIX")
+// Ohne Angabe ist Break-Glass von nirgendwo freischaltbar (sicherer Standard).
+config.adminLocalNetworks = (process.env.ADMIN_LOCAL_NETWORKS || "")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);

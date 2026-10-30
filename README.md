@@ -40,10 +40,9 @@ Der Inhalt von `dist/` wird vom Webserver unter `/next-step-rad/` ausgeliefert.
 Der Service Worker (PWA) cacht nur die App selbst; `/api/` ist ausdrücklich
 ausgenommen.
 
-> Hinweis: Der Workflow `.github/workflows/deploy.yml` veröffentlicht `dist/`
-> weiterhin auf GitHub Pages. Dort gibt es keine API, die App kann sich dort also
-> nicht anmelden. Der Workflow sollte deaktiviert oder entfernt werden, bevor
-> dieser Stand auf `main` kommt.
+Das Repo dient nur der Zusammenarbeit. Es gibt bewusst kein automatisches
+Deployment (kein GitHub Pages); ausgerollt wird auf dem eigenen Server.
+
 
 ## Projektstruktur
 

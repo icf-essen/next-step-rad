@@ -124,7 +124,8 @@ und Upptime gedacht.
   zusätzlich CHECK-Constraints in der DB. Nur parametrisierte SQL-Queries.
 - Rate-Limits: global 300/min, Login 10/5 min, Registrierung 5/h, Gruppenbeitritt 20/10 min.
 - Die DB-Rolle `nextstep_app` hat nur SELECT/INSERT/UPDATE/DELETE, kein DDL.
-- systemd: Prozess darf nur mit localhost kommunizieren (`IPAddressAllow=localhost`).
+- systemd: Prozess darf nur mit localhost kommunizieren (`IPAddressAllow=localhost`);
+  Front-Caddy und Mail-Relay werden lokal per Drop-in `netz.conf` freigegeben.
 
 ## Lokal testen
 
