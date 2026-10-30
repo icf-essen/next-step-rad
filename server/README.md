@@ -142,6 +142,33 @@ Der Smoke-Test legt drei Testkonten an (Domain `nextstep-smoke.invalid`), bestä
 sie per `psql` (`SMOKE_PSQL`, Standard `sudo -u postgres psql -d nextstep`), prüft
 alle Endpunkte inkl. Rechtegrenzen und löscht die Konten am Ende wieder.
 
+## Nächtliches Backup und automatischer Deploy
+
+Auf dem Server läuft jede Nacht um 01:00 UTC `nextstep-db-backup.timer`:
+
+1. `nextstep-db-backup.sh` sichert die Datenbank (`pg_dump`, 14 Tage Aufbewahrung).
+2. Nur wenn das Backup erfolgreich war, startet systemd danach
+   `next-step-rad-deploy.service` (`OnSuccess=`). Der Deploy holt `main`, baut
+   Frontend und API, startet die API neu und prüft den Health-Endpoint.
+3. Bringt `main` neue Migrationen mit, rollt der Deploy **nicht** aus. Dann von
+   Hand die Migrationen einspielen und
+   `next-step-rad-deploy.sh --migrationen-eingespielt` starten.
+
+Ein Merge auf `main` ist also spätestens am nächsten Morgen live.
+
+Beide Skripte schreiben ihren Status für den node-exporter nach
+`/var/lib/prometheus/node-exporter/` (`nextstep_backup_*`, `nextstep_deploy_*`).
+Daraus speisen sich Alarme und der Leitstand.
+
+Installation (als root, aus dem Repo-Verzeichnis):
+
+```bash
+install -m 755 server/deploy/nextstep-db-backup.sh server/deploy/next-step-rad-deploy.sh /usr/local/bin/
+install -m 644 server/deploy/nextstep-db-backup.service server/deploy/nextstep-db-backup.timer \
+  server/deploy/next-step-rad-deploy.service /etc/systemd/system/
+systemctl daemon-reload && systemctl enable --now nextstep-db-backup.timer
+```
+
 ## Datenbank-Migrationen
 
 `migrations/` enthält das Schema in Reihenfolge. Ausführen als Eigentümer, nicht als App-Rolle:

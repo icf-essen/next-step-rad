@@ -1,0 +1,10 @@
+[Unit]
+Description=Next Step Rad: main aus GitHub holen und ausrollen
+# Wird von nextstep-db-backup.service (OnSuccess=) gestartet, nicht direkt per Timer
+After=network-online.target nextstep-db-backup.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/next-step-rad-deploy.sh
+TimeoutStartSec=20min

@@ -1,0 +1,11 @@
+[Unit]
+Description=Next Step: nächtliches Backup und anschließender Deploy
+
+[Timer]
+# 01:00 UTC – vor man-db (01:33), dem Neustart-Fenster (04:10) und apt (~06:00)
+OnCalendar=*-*-* 01:00:00 UTC
+# War die VM um 01:00 aus, wird das Backup nach dem Start nachgeholt
+Persistent=true
+
+[Install]
+WantedBy=timers.target
