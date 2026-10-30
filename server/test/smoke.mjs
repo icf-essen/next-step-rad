@@ -68,7 +68,7 @@ class Client {
     } catch {
       data = text;
     }
-    return { status: res.status, data };
+    return { status: res.status, data, headers: res.headers };
   }
 }
 
@@ -83,7 +83,9 @@ async function main() {
   console.log(`API: ${BASE}\n`);
 
   console.log("Grundlagen");
-  check("Health", (await A.req("GET", "/health")).status === 200);
+  let h = await A.req("GET", "/health");
+  check("Health -> 200 {status: ok}", h.status === 200 && h.data?.status === "ok", h);
+  check("Health wird nicht zwischengespeichert", h.headers.get("cache-control") === "no-store", h);
   check("Bereiche öffentlich lesbar (5)", (await A.req("GET", "/areas")).data?.length === 5);
   check("/me ohne Login -> 401", (await A.req("GET", "/me")).status === 401);
 
@@ -244,9 +246,9 @@ async function main() {
   check("Normales Konto: TOTP einrichten -> 403", r.status === 403, r);
 
   console.log("\nSchutzmechanismen");
-  r = await A.req("POST", "/group/messages", { text: "CSRF" }, { Origin: "https://boese.example" });
+  r = await A.req("POST", "/groups", { name: "CSRF" }, { Origin: "https://boese.example" });
   check("Fremde Origin -> 403", r.status === 403, r);
-  r = await A.req("POST", "/group/messages", undefined, { "Content-Type": "text/plain" });
+  r = await A.req("POST", "/groups", undefined, { "Content-Type": "text/plain" });
   check("Formular-/Text-Body statt JSON abgelehnt", r.status >= 400 && r.status < 500, r);
   r = await new Client("x").req("GET", "/groups", undefined, { Cookie: "nsr_session=gefaelscht" });
   check("Gefälschtes Session-Cookie -> 401", r.status === 401, r);

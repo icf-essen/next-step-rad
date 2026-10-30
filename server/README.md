@@ -14,7 +14,7 @@ Browser ──HTTPS──► Caddy
 
 | Methode | Pfad | Login | Zweck |
 |---|---|---|---|
-| GET | `/health` | – | DB erreichbar? |
+| GET | `/health` | – | Zustand für Monitoring: 200 `{status: "ok"}` oder 503 `{status: "down"}` |
 | GET | `/areas` | – | Die fünf Bereiche mit Standardfarben |
 | GET | `/auth/options` | – | Ist SSO aktiv, Beschriftung des Knopfs |
 | POST | `/auth/register` | – | Konto anlegen `{email, password, displayName?}` |
@@ -52,6 +52,22 @@ Browser ──HTTPS──► Caddy
 | POST | `/me/totp/setup` | lokaler Admin | `{password}` → Geheimnis + otpauth-URL |
 | POST | `/me/totp/confirm` | lokaler Admin | `{code}` aktiviert TOTP |
 | POST | `/auth/elevate` | lokaler Admin | `{code}` schaltet Verwaltung frei (nur intern) |
+
+## Health-Check für Monitoring und Statusseite
+
+`GET /next-step-rad/api/health` ist ohne Anmeldung erreichbar und für Blackbox-Exporter
+und Upptime gedacht.
+
+- **200** `{"status":"ok"}`: API läuft, PostgreSQL antwortet, Schema ist aktuell.
+- **503** `{"status":"down"}`: Datenbank nicht erreichbar, hängt (Antwort nach spätestens 3 s)
+  oder eine Migration fehlt. Die Abfrage nennt Spalten aus der neuesten Migration, sodass
+  ein vergessenes Einspielen auffällt.
+- Kommt gar keine Antwort bzw. 502, läuft die API selbst nicht.
+- Nach außen nur dieser Status, keine Fehlermeldung, keine Version. Der Grund steht im
+  Journal (`journalctl -u next-step-rad-api`), geloggt nur beim Wechsel des Zustands.
+- Ergebnis wird 5 s zwischengespeichert: Egal wie oft gefragt wird, höchstens eine
+  DB-Abfrage alle 5 s. `Cache-Control: no-store`, damit Cloudflare nichts zwischenspeichert.
+- Wer eine neue Migration hinzufügt, nimmt eine ihrer Spalten in `src/health.js` auf.
 
 ## E-Mail-Bestätigung und Passwort vergessen
 

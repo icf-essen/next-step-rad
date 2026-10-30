@@ -12,6 +12,7 @@ import groupRoutes from "./routes/groups.js";
 import oidcRoutes from "./routes/oidc.js";
 import adminRoutes from "./routes/admin.js";
 import breakGlassRoutes from "./routes/breakglass.js";
+import healthRoutes from "./health.js";
 
 export async function buildApp(opts = {}) {
   const app = Fastify({
@@ -95,10 +96,7 @@ export async function buildApp(opts = {}) {
 
   app.register(
     async (api) => {
-      api.get("/health", { config: { rateLimit: false } }, async () => {
-        await query("SELECT 1");
-        return { ok: true };
-      });
+      await api.register(healthRoutes);
       await api.register(authRoutes);
       await api.register(meRoutes);
       await api.register(checkinRoutes);
