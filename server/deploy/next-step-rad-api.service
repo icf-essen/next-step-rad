@@ -1,0 +1,61 @@
+[Unit]
+Description=Next Step Rad API
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=nextstep-api
+Group=nextstep-api
+WorkingDirectory=/opt/next-step-rad/repo/server
+ExecStart=/usr/bin/node src/server.js
+EnvironmentFile=/etc/next-step-rad/api.env
+Restart=on-failure
+RestartSec=5
+
+# --- Härtung --------------------------------------------------------------
+# Der Dienst darf nur mit localhost (PostgreSQL, Caddy) sprechen. Weitere Ziele
+# (Front-Caddy für den SSO-Login über auth.icf-essen.de, Mail-Relay) werden
+# über eine Ergänzungsdatei freigegeben, damit keine internen Adressen im Repo
+# stehen:
+#   /etc/systemd/system/next-step-rad-api.service.d/netz.conf
+#   [Service]
+#   IPAddressAllow=<IP des Front-Caddy>/32
+#   IPAddressAllow=<IP des Mail-Relays>/32
+# Damit für den SSO-Login kein DNS nötig ist, steht in /etc/hosts:
+#   <IP des Front-Caddy>  auth.icf-essen.de
+# Selbst bei einer Kompromittierung der API sind von diesem Prozess aus keine
+# weiteren Verbindungen ins Netz oder ins Internet möglich.
+IPAddressDeny=any
+IPAddressAllow=localhost
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+# Dateisystem nur lesbar, kein Zugriff auf /home, eigenes /tmp
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+UMask=0077
+
+# Keine Rechteausweitung, keine Capabilities
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged
+# V8 (Node) nutzt Memory Protection Keys zum Schutz seines JIT-Codes; nicht in @system-service enthalten.
+SystemCallFilter=pkey_alloc pkey_free pkey_mprotect
+
+[Install]
+WantedBy=multi-user.target

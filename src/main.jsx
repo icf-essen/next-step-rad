@@ -1,4 +1,3 @@
-import "./storage-polyfill.js";
 import "./styles.css";
 
 import React from "react";

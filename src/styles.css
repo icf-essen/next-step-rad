@@ -371,3 +371,154 @@ input[type=range] { width: 100%; }
 @media (prefers-reduced-motion: reduce) {
   .nsr-sheet, .nsr-drawer { animation: none; }
 }
+
+/* ------------------------- Anmeldung & Konto ------------------------- */
+.nsr-auth-brand { flex: 1; text-align: center; }
+.nsr-auth .nsr-verse { margin-bottom: 22px; }
+.nsr-auth-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 12px;
+  background: var(--nsr-track);
+  border-radius: 12px;
+}
+.nsr-auth-tab {
+  flex: 1;
+  font: 600 14px 'Inter', sans-serif;
+  color: var(--nsr-ink-muted);
+  background: transparent;
+  border: none;
+  border-radius: 9px;
+  padding: 9px 10px;
+  cursor: pointer;
+}
+.nsr-auth-tab-active { background: var(--nsr-surface); color: var(--nsr-ink); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06); }
+.nsr-auth-form { display: flex; flex-direction: column; gap: 14px; }
+.nsr-auth-form .nsr-btn-wide { margin-top: 4px; }
+.nsr-field { display: flex; flex-direction: column; gap: 6px; }
+.nsr-field > span,
+.nsr-field > label { font-size: 13.5px; font-weight: 600; }
+.nsr-field small.nsr-hint { margin: 0; font-size: 12.5px; }
+.nsr-field-row .nsr-input { flex: 1; min-width: 0; }
+.nsr-sso-btn { margin: 0 0 4px; }
+.nsr-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0 14px;
+  color: var(--nsr-ink-muted);
+  font-size: 12.5px;
+}
+.nsr-divider::before,
+.nsr-divider::after { content: ""; flex: 1; height: 1px; background: var(--nsr-border); }
+.nsr-auth-notice {
+  background: var(--nsr-surface);
+  border: 1px solid var(--nsr-danger);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin: 0 0 14px;
+  line-height: 1.45;
+}
+
+/* --------------------------- Gruppenliste --------------------------- */
+.nsr-group-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }
+.nsr-group-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.nsr-group-item:hover { border-color: var(--nsr-accent); }
+.nsr-group-item-main { flex: 1; min-width: 0; }
+.nsr-group-item-name { font-family: 'Fraunces', serif; font-weight: 600; font-size: 16.5px; margin: 0 0 4px; }
+.nsr-group-item-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12.5px; color: var(--nsr-ink-muted); }
+.nsr-team-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--nsr-track);
+  color: var(--nsr-ink);
+}
+.nsr-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: -4px 0 10px;
+  padding: 4px 0;
+  border: none;
+  background: none;
+  font: 600 13.5px 'Inter', sans-serif;
+  color: var(--nsr-ink-muted);
+  cursor: pointer;
+}
+.nsr-managed-note { font-size: 12.5px; color: var(--nsr-ink-muted); margin: 6px 0 0; }
+.nsr-sso-status { display: flex; align-items: center; gap: 8px; font-size: 14px; margin: 0 0 12px; }
+
+/* --------------------------- Rechtliches --------------------------- */
+.nsr-legal { text-align: center; font-size: 12.5px; color: var(--nsr-ink-muted); margin: 22px 0 6px; }
+.nsr-legal a { color: var(--nsr-ink-muted); text-decoration: underline; text-underline-offset: 2px; }
+.nsr-legal a:hover { color: var(--nsr-ink); }
+.nsr-drawer .nsr-legal { margin-top: 28px; }
+
+/* --------------------------- Verwaltung ---------------------------- */
+.nsr-admin-user-name { font-weight: 600; margin: 0 0 2px; }
+.nsr-reset-link {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 8px;
+  align-items: center;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--nsr-track);
+}
+.nsr-reset-link code { font-size: 12px; word-break: break-all; }
+.nsr-reset-link small { grid-column: 1 / -1; margin: 0; }
+
+/* --------------------- Team-Gruppe abwählen ------------------------ */
+.nsr-participation { align-items: flex-start; gap: 10px; margin-bottom: 14px; cursor: pointer; }
+.nsr-participation input { margin-top: 3px; }
+.nsr-participation span { display: flex; flex-direction: column; gap: 4px; font-size: 14px; font-weight: 600; }
+.nsr-participation small { font-weight: 400; margin: 0; }
+.nsr-optout-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--nsr-border);
+  color: var(--nsr-ink-muted);
+}
+.nsr-participation input { accent-color: var(--nsr-accent); width: 17px; height: 17px; }
+
+/* -------------------- Bestätigung & Break-Glass -------------------- */
+.nsr-auth-info {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  background: var(--nsr-surface);
+  border: 1px solid var(--nsr-accent);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin: 0 0 14px;
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+.nsr-auth-info svg { flex-shrink: 0; color: var(--nsr-accent); margin-top: 1px; }
+.nsr-auth-links { display: flex; justify-content: center; margin-top: 12px; }
+.nsr-breakglass-note { display: flex; gap: 10px; align-items: flex-start; border-color: var(--nsr-accent); color: var(--nsr-ink); font-size: 13px; }
+.nsr-breakglass-note svg { flex-shrink: 0; color: var(--nsr-accent); }
+.nsr-qr { display: flex; justify-content: center; min-height: 220px; }
+.nsr-qr img { border-radius: 8px; background: #fff; }
+.nsr-secret { display: block; font-size: 13px; letter-spacing: 0.08em; word-break: break-all; background: var(--nsr-track); padding: 8px 10px; border-radius: 10px; }
+.nsr-code-input { font-size: 22px; letter-spacing: 0.4em; text-align: center; font-variant-numeric: tabular-nums; }
+.nsr-admin-actions { flex-wrap: wrap; }
+.nsr-btn-row.nsr-admin-actions { display: flex; flex-direction: column; align-items: stretch; }
+.nsr-btn-row.nsr-admin-actions .nsr-btn { width: 100%; justify-content: center; }

@@ -20,6 +20,7 @@ export function CheckinSheet({
   onSave,
   onClose,
   saving,
+  error,
 }) {
   return (
     <div className="nsr-overlay" onClick={onClose}>
@@ -101,8 +102,13 @@ export function CheckinSheet({
                   checked={shareWithGroup}
                   onChange={(e) => setShareWithGroup(e.target.checked)}
                 />
-                <span>Mit meiner Gruppe teilen</span>
+                <span>Mit meinen Gruppen teilen</span>
               </label>
+            )}
+            {error && (
+              <p className="nsr-error" role="alert">
+                {error}
+              </p>
             )}
             <div className="nsr-btn-row">
               <button className="nsr-btn nsr-btn-ghost" onClick={onBack}>
