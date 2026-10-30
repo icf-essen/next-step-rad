@@ -1,0 +1,9 @@
+[Unit]
+Description=Next Step: Datenbank-Backup (pg_dump)
+After=postgresql.service
+# Nur nach erfolgreichem Backup wird ausgerollt
+OnSuccess=next-step-rad-deploy.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/nextstep-db-backup.sh
