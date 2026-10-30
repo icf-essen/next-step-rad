@@ -1,0 +1,29 @@
+# Dependabot: nur Sicherheitsupdates, keine regelmäßigen Versions-Updates.
+# open-pull-requests-limit: 0 schaltet die Versions-Updates ab; Sicherheits-PRs
+# kommen trotzdem, sofern "Dependabot security updates" in den Repo-Einstellungen
+# aktiv ist. Pro Ordner werden alle Sicherheitsupdates in einem PR gebündelt.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"            # Frontend (Vite/React)
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    groups:
+      frontend-sicherheit:
+        applies-to: security-updates
+        patterns: ["*"]
+    commit-message:
+      prefix: "Frontend"
+
+  - package-ecosystem: "npm"
+    directory: "/server"      # API (Fastify)
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    groups:
+      api-sicherheit:
+        applies-to: security-updates
+        patterns: ["*"]
+    commit-message:
+      prefix: "API"
